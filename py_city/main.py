@@ -2,7 +2,7 @@ import pygame
 import random
 from player import Player
 from npc import NPC
-from buildings import Building, Jail, Hospital
+from buildings import Building, House, Jail, Hospital
 from game_state import GameState
 from rendering import draw_roads, show_dialog
 from quest_system import Quest, available_quests
@@ -75,7 +75,7 @@ for _ in range(12):
     if (x <= player_x <= x + GRID_SIZE and y <= player_y <= y + GRID_SIZE):
         continue
     image = random.choice(house_images)
-    new_building = Building(x + ROAD_WIDTH, y + ROAD_WIDTH, GRID_SIZE, GRID_SIZE, image)
+    new_building = House(x + ROAD_WIDTH, y + ROAD_WIDTH, GRID_SIZE, GRID_SIZE, image)
     buildings.append(new_building)
 
 # Create jail and hospital at specific positions on the grid
@@ -149,7 +149,7 @@ while running:
                 npc.cooldown_timer = 300  # 5 seconds cooldown
 
     for criminal in criminals:
-        if criminal.committed_crime and not criminal.in_building:
+        if (criminal.committed_crime and not criminal.in_building) or criminal.breaking_in:
             for police_officer in police:
                 if distance(criminal, police_officer) < 30:
                     criminal.health -= 2
@@ -158,6 +158,7 @@ while running:
                         criminal.x, criminal.y = jail.get_random_interior_position()
                         game_state.criminals_caught += 1
                         criminal.committed_crime = False
+                        criminal.breaking_in = False
                     break
 
     for npc in criminals + police + civilians:

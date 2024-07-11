@@ -1,5 +1,5 @@
 import pygame
-import random  # Ensure random is imported
+import random
 
 class Building:
     def __init__(self, x, y, width, height, image, building_type="normal"):
@@ -26,6 +26,20 @@ class Building:
 
     def get_exit_position(self):
         return (self.rect.centerx, self.rect.centery)
+
+class House(Building):
+    def __init__(self, x, y, width, height, image):
+        super().__init__(x, y, width, height, image, "house")
+        self.has_downstairs = random.choice([True, False])
+        self.downstairs_locked = random.choice([True, False]) if self.has_downstairs else False
+
+    def attempt_break_in(self):
+        if not self.has_downstairs:
+            return False
+        if not self.downstairs_locked:
+            return True
+        # 50% chance of successfully picking the lock
+        return random.random() < 0.5
 
 class Jail(Building):
     def __init__(self, x, y, width, height, image):

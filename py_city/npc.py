@@ -1,12 +1,12 @@
 import pygame
 import random
 import math
-from buildings import Building
+from buildings import Building, House
 from utils import distance
 
-# Ensure colors are defined
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
+YELLOW = (255, 255, 0)
 
 class NPC:
     def __init__(self, x, y, sprite, npc_type, grid_size, road_width, width, height, game_state):
@@ -25,7 +25,7 @@ class NPC:
         self.committed_crime = False
         self.in_building = None
         self.building_timer = 0
-        self.cooldown_timer = 0  # Cooldown timer for healing
+        self.cooldown_timer = 0
         self.path = []
         self.path_index = 0
         self.dialog = self.generate_dialog()
@@ -34,6 +34,8 @@ class NPC:
         self.width = width
         self.height = height
         self.game_state = game_state
+        self.breaking_in = False
+        self.break_in_timer = 0
 
     def move(self, buildings, hospital):
         if self.in_jail or self.in_building:
@@ -41,6 +43,12 @@ class NPC:
 
         if self.cooldown_timer > 0:
             self.cooldown_timer -= 1
+
+        if self.breaking_in:
+            self.break_in_timer -= 1
+            if self.break_in_timer <= 0:
+                self.finish_break_in()
+            return
 
         if not self.path:
             self.generate_path()
@@ -73,13 +81,21 @@ class NPC:
         screen.blit(self.sprite, (self.x, self.y))
         pygame.draw.rect(screen, RED, (self.x, self.y - 5, self.size, 3))
         pygame.draw.rect(screen, GREEN, (self.x, self.y - 5, self.size * (self.health / 100), 3))
+        if self.breaking_in:
+            pygame.draw.circle(screen, YELLOW, (int(self.x + self.size/2), int(self.y + self.size/2)), 5)
 
     def attempt_crime(self, buildings, civilians):
-        if self.type == "criminal" and not self.in_jail and not self.committed_crime and not self.in_building:
+        if self.type == "criminal" and not self.in_jail and not self.committed_crime and not self.in_building and not self.breaking_in:
             self.crime_timer -= 1
             if self.crime_timer <= 0:
                 target = random.choice(buildings + civilians)
-                if isinstance(target, Building) and target.type == "normal":
+                if isinstance(target, House) and target.has_downstairs:
+                    print("A criminal is attempting to break into a house!")
+                    self.breaking_in = True
+                    self.break_in_timer = 180  # 3 seconds to break in
+                    self.x, self.y = target.rect.x, target.rect.y
+                    self.in_building = target
+                elif isinstance(target, Building) and target.type == "normal":
                     print("A building was burglarized!")
                     self.in_building = target
                     self.x, self.y = target.get_random_interior_position()
@@ -90,6 +106,18 @@ class NPC:
                     self.game_state.total_muggings += 1
                 self.committed_crime = True
                 self.crime_timer = random.randint(300, 600)
+
+    def finish_break_in(self):
+        self.breaking_in = False
+        if self.in_building.attempt_break_in():
+            print("Break-in successful!")
+            self.x, self.y = self.in_building.get_random_interior_position()
+            self.building_timer = 180
+            self.game_state.total_burglaries += 1
+        else:
+            print("Break-in failed!")
+            self.in_building = None
+            self.committed_crime = False
 
     def generate_dialog(self):
         if self.type == "criminal":
