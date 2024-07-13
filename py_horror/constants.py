@@ -1,18 +1,21 @@
 import pygame
 
 # Game constants
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1280, 720
 FPS = 60
+
+# Map size
+MAP_WIDTH, MAP_HEIGHT = 1600, 1200
 
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
-BROWN = (165, 42, 42)
+BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
-PURPLE = (128, 0, 128)
-DARK_ORANGE = (255, 140, 0)
+BROWN = (165, 42, 42)
+DARK_BROWN = (101, 67, 33)
 
 # Initialize pygame and create window
 pygame.init()
