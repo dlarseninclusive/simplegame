@@ -55,6 +55,7 @@ instructions_text = [
     "G to change alignment to good",
     "E to change alignment to evil",
     "Space to interact",
+    "B to enter/exit downstairs",
     "I to toggle instructions",
     "ESC to exit"
 ]
@@ -85,8 +86,8 @@ buildings.append(jail)
 buildings.append(hospital)
 
 # Create NPCs
-num_criminals = 8
-num_police = 8
+num_criminals = 4  # Reduced from 8
+num_police = 4  # Reduced from 8
 num_civilians = 15
 criminals = [NPC(*find_valid_spawn(buildings, WIDTH, HEIGHT, PLAYER_SIZE), criminal_sprite, "criminal", GRID_SIZE, ROAD_WIDTH, WIDTH, HEIGHT, game_state) for _ in range(num_criminals)]
 police = [NPC(*find_valid_spawn(buildings, WIDTH, HEIGHT, PLAYER_SIZE), police_sprite, "police", GRID_SIZE, ROAD_WIDTH, WIDTH, HEIGHT, game_state) for _ in range(num_police)]
@@ -117,6 +118,16 @@ while running:
                 if isinstance(interacted_object, NPC):
                     current_dialog = random.choice(interacted_object.dialog)
                     dialog_timer = 180  # Show dialog for 3 seconds
+            elif event.key == pygame.K_b:
+                # Enter or exit downstairs
+                for building in buildings:
+                    if isinstance(building, House) and building.has_downstairs:
+                        if building.rect.collidepoint(player.x, player.y):
+                            building.enter_downstairs(player)
+                            break
+                        elif building.downstairs and building.downstairs.collidepoint(player.x, player.y):
+                            building.exit_downstairs(player)
+                            break
 
     keys = pygame.key.get_pressed()
     dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]

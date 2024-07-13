@@ -13,7 +13,7 @@ class NPC:
         self.x = x
         self.y = y
         self.size = 35
-        self.speed = 2
+        self.speed = 1  # Reduced from 2 to 1
         self.sprite = sprite
         self.type = npc_type
         self.direction = random.choice(["up", "down", "left", "right"])
@@ -26,6 +26,8 @@ class NPC:
         self.in_building = None
         self.building_timer = 0
         self.cooldown_timer = 0
+        self.breaking_in = False
+        self.break_in_timer = 0
         self.path = []
         self.path_index = 0
         self.dialog = self.generate_dialog()
@@ -34,8 +36,6 @@ class NPC:
         self.width = width
         self.height = height
         self.game_state = game_state
-        self.breaking_in = False
-        self.break_in_timer = 0
 
     def move(self, buildings, hospital):
         if self.in_jail or self.in_building:

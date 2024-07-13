@@ -32,6 +32,14 @@ class House(Building):
         super().__init__(x, y, width, height, image, "house")
         self.has_downstairs = random.choice([True, False])
         self.downstairs_locked = random.choice([True, False]) if self.has_downstairs else False
+        self.downstairs = None
+        if self.has_downstairs:
+            self.downstairs = pygame.Rect(x, y + height, width, height)
+
+    def draw(self, screen):
+        super().draw(screen)
+        if self.has_downstairs:
+            pygame.draw.rect(screen, (100, 100, 100), self.downstairs)  # Draw downstairs in dark gray
 
     def attempt_break_in(self):
         if not self.has_downstairs:
@@ -40,6 +48,15 @@ class House(Building):
             return True
         # 50% chance of successfully picking the lock
         return random.random() < 0.5
+
+    def enter_downstairs(self, entity):
+        if self.has_downstairs:
+            entity.x = self.downstairs.centerx
+            entity.y = self.downstairs.centery
+
+    def exit_downstairs(self, entity):
+        entity.x = self.rect.centerx
+        entity.y = self.rect.bottom - self.wall_thickness
 
 class Jail(Building):
     def __init__(self, x, y, width, height, image):
