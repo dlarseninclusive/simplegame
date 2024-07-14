@@ -1,7 +1,7 @@
 import pygame
 import random
 from constants import *
-from game_objects import Player, Monster, BossMonster, Coin, Building
+from game_objects import Player, Monster, BossMonster, Coin, Building, CoinCollectEffect
 from environment import Village, IndoorScene, MansionScene
 
 class Game:
@@ -19,6 +19,7 @@ class Game:
         self.show_minimap = False
         self.camera_x = 0
         self.camera_y = 0
+        self.effects = pygame.sprite.Group()
 
         # Shader effect setup
         self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
@@ -60,7 +61,8 @@ class Game:
 
                 coins_collected = pygame.sprite.spritecollide(self.player, self.village.coins, True)
                 for coin in coins_collected:
-                    self.player.collect_coin(coin)
+                    effect = self.player.collect_coin(coin)
+                    self.effects.add(effect)
 
             elif self.current_scene == "mansion":
                 self.player.move(dx, dy, [])
@@ -71,7 +73,8 @@ class Game:
 
                 coins_collected = pygame.sprite.spritecollide(self.player, self.mansion_scene.coins, True)
                 for coin in coins_collected:
-                    self.player.collect_coin(coin)
+                    effect = self.player.collect_coin(coin)
+                    self.effects.add(effect)
 
             else:  # Indoor scene
                 current_indoor = self.indoor_scenes[self.current_building]
@@ -83,9 +86,11 @@ class Game:
 
                 coins_collected = pygame.sprite.spritecollide(self.player, current_indoor.coins, True)
                 for coin in coins_collected:
-                    self.player.collect_coin(coin)
+                    effect = self.player.collect_coin(coin)
+                    self.effects.add(effect)
 
             self.player.update()
+            self.effects.update()
             self.update_camera()
             self.update_shader_effects()
             self.draw()
@@ -116,6 +121,11 @@ class Game:
                 dropped_coin = monster.drop_coin()
                 if dropped_coin:
                     coins.add(dropped_coin)
+                    print(f"Coin dropped at position: {dropped_coin.rect.center}")  # Debug print
+                else:
+                    print("Monster defeated but no coin dropped")  # Debug print
+        
+        print(f"Current number of coins in scene: {len(coins)}")  # Debug print
 
     def update_camera(self):
         self.camera_x = max(0, min(self.player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
@@ -184,6 +194,15 @@ class Game:
         self.screen.blit(self.player.image, (player_screen_x, player_screen_y))
         self.player.draw_health_bar(self.screen, self.camera_x if self.current_scene == "village" else 0, 
                                     self.camera_y if self.current_scene == "village" else 0)
+
+        for effect in self.effects:
+            if self.current_scene == "village":
+                effect_screen_x = effect.rect.x - self.camera_x
+                effect_screen_y = effect.rect.y - self.camera_y
+            else:
+                effect_screen_x = effect.rect.x
+                effect_screen_y = effect.rect.y
+            self.screen.blit(effect.image, (effect_screen_x, effect_screen_y))
 
         if self.near_entrance:
             text = font.render("Press SPACE to enter/exit", True, YELLOW)

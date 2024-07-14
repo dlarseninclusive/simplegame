@@ -70,7 +70,7 @@ class Player(Entity):
 
     def collect_coin(self, coin):
         self.coins += 1
-        print(f"Coin collected! Total coins: {self.coins}")
+        return CoinCollectEffect(coin.rect.center)
 
     def attack(self, monsters):
         if self.attack_cooldown == 0:
@@ -104,7 +104,9 @@ class Monster(Entity):
 
     def drop_coin(self):
         if random.random() < self.coin_drop_chance:
-            return Coin(self.rect.centerx, self.rect.centery)
+            offset_x = random.randint(-30, 30)
+            offset_y = random.randint(-30, 30)
+            return Coin(self.rect.centerx + offset_x, self.rect.centery + offset_y)
         return None
 
 class BossMonster(Entity):
@@ -117,7 +119,9 @@ class BossMonster(Entity):
         pass
 
     def drop_coin(self):
-        return Coin(self.rect.centerx, self.rect.centery)
+        offset_x = random.randint(-30, 30)
+        offset_y = random.randint(-30, 30)
+        return Coin(self.rect.centerx + offset_x, self.rect.centery + offset_y)
 
 class Coin(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -142,3 +146,19 @@ class Building(pygame.sprite.Sprite):
             self.entrance = pygame.Rect(self.rect.centerx - entrance_width // 2, 
                                         self.rect.top, 
                                         entrance_width, entrance_height)
+
+class CoinCollectEffect(pygame.sprite.Sprite):
+    def __init__(self, pos):
+        super().__init__()
+        self.image = pygame.Surface((50, 20), pygame.SRCALPHA)
+        self.font = pygame.font.Font(None, 20)
+        self.text = self.font.render("+1 Coin", True, YELLOW)
+        self.image.blit(self.text, (0, 0))
+        self.rect = self.image.get_rect(center=pos)
+        self.timer = 60  # Effect lasts for 60 frames (1 second at 60 FPS)
+
+    def update(self):
+        self.rect.y -= 1
+        self.timer -= 1
+        if self.timer <= 0:
+            self.kill()

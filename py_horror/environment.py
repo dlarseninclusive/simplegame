@@ -1,7 +1,7 @@
 import pygame
 import random
 from constants import *
-from base_classes import Monster, BossMonster, Coin
+from game_objects import Building, Monster, BossMonster
 from sprites import house_sprites, mansion_sprite, zombie_sprite, tracker_sprite, bat_sprite, dirt_road_sprite, grass_sprite, furniture_sprites
 
 class Village:
@@ -48,9 +48,6 @@ class Village:
         self.mansion = Building(mansion_pos, mansion_sprite, facing_south=True)
         self.buildings.add(self.mansion)
 
-        for _ in range(20):
-            self.spawn_coin()
-
     def create_monster(self, monster_type, x, y):
         if monster_type == "zombie":
             return Monster(x, y, zombie_sprite, 0.5, 50, "zombie")
@@ -63,8 +60,6 @@ class Village:
     def update(self, player):
         self.monsters.update()
         self.coins.update()
-        # Remove dead monsters
-        self.monsters = pygame.sprite.Group([monster for monster in self.monsters if monster.health > 0])
 
     def draw(self, screen, camera_x, camera_y):
         for y in range(0, MAP_HEIGHT, self.grass_sprite.get_height()):
@@ -89,29 +84,6 @@ class Village:
         for coin in self.coins:
             screen.blit(coin.image, (coin.rect.x - camera_x, coin.rect.y - camera_y))
 
-    def spawn_coin(self):
-        x = random.randint(0, MAP_WIDTH)
-        y = random.randint(0, MAP_HEIGHT)
-        coin = Coin(x, y)
-        self.coins.add(coin)
-
-class Building(pygame.sprite.Sprite):
-    def __init__(self, pos, sprite, facing_south=True):
-        super().__init__()
-        self.image = sprite
-        self.rect = self.image.get_rect()
-        self.rect.topleft = pos
-        entrance_width = 50  # Increased entrance width
-        entrance_height = 12  # Increased entrance height
-        if facing_south:
-            self.entrance = pygame.Rect(self.rect.centerx - entrance_width // 2, 
-                                        self.rect.bottom - entrance_height, 
-                                        entrance_width, entrance_height)
-        else:
-            self.entrance = pygame.Rect(self.rect.centerx - entrance_width // 2, 
-                                        self.rect.top, 
-                                        entrance_width, entrance_height)
-
 class IndoorScene:
     def __init__(self, building):
         self.building = building
@@ -127,12 +99,6 @@ class IndoorScene:
             y = random.randint(50, HEIGHT-50)
             monster = self.create_monster(monster_type, x, y)
             self.monsters.add(monster)
-
-        for _ in range(random.randint(1, 5)):
-            x = random.randint(50, WIDTH-50)
-            y = random.randint(50, HEIGHT-50)
-            coin = Coin(x, y)
-            self.coins.add(coin)
 
         # Add furniture
         for _ in range(random.randint(3, 6)):
@@ -155,8 +121,6 @@ class IndoorScene:
     def update(self, player):
         self.monsters.update()
         self.coins.update()
-        # Remove dead monsters
-        self.monsters = pygame.sprite.Group([monster for monster in self.monsters if monster.health > 0])
 
     def draw(self, screen, camera_x, camera_y):
         screen.fill(BROWN)  # Fill with a brown color to represent wooden floor
