@@ -24,7 +24,7 @@ class Game:
 
         # Shader effect setup
         self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
-        self.shader_surface.set_alpha(50)
+        self.shader_surface.set_alpha(75)
         self.rain_drops = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(100)]
 
         # Lightning effect setup
@@ -308,7 +308,7 @@ class Game:
         for building in self.village.buildings:
             dark_surface = pygame.Surface((building.rect.width, building.rect.height))
             dark_surface.fill((0, 0, 0))
-            dark_surface.set_alpha(100)  # Adjust this value to make buildings darker or lighter
+            dark_surface.set_alpha(0)  # Adjust this value to make buildings darker or lighter
             self.screen.blit(dark_surface, (building.rect.x - self.camera_x, building.rect.y - self.camera_y))
 
     def draw_instructions(self):

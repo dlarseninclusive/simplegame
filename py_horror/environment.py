@@ -20,6 +20,8 @@ class Village:
         self.mansion = None
         self.grass_sprite = pygame.transform.scale(grass_sprite, (grass_sprite.get_width() // 2, grass_sprite.get_height() // 2))
         self.setup_village()
+        self.building_shader = pygame.Surface((1, 1))
+        self.building_shader.set_alpha(0)  # Adjust this value to change the darkness level of buildings
 
     def setup_village(self):
         # Create horizontal and vertical roads
@@ -90,6 +92,9 @@ class Village:
             screen.blit(building.image, (building.rect.x - camera_x, building.rect.y - camera_y))
             pygame.draw.rect(screen, GREEN, (building.entrance.x - camera_x, building.entrance.y - camera_y, 
                                              building.entrance.width, building.entrance.height))
+            # Apply shader to building
+            self.building_shader = pygame.transform.scale(self.building_shader, (building.rect.width, building.rect.height))
+            screen.blit(self.building_shader, (building.rect.x - camera_x, building.rect.y - camera_y))
 
         for monster in self.monsters:
             screen.blit(monster.image, (monster.rect.x - camera_x, monster.rect.y - camera_y))
@@ -110,9 +115,10 @@ class IndoorScene:
         self.torches = pygame.sprite.Group()
         self.floor_surface = self.create_floor_surface()
         self.setup_room()
+            # Create a shade surface to darken the room
         self.shade_surface = pygame.Surface((WIDTH, HEIGHT))
         self.shade_surface.fill((0, 0, 0))
-        self.shade_surface.set_alpha(100)  # Adjust this value to change the darkness level
+        self.shade_surface.set_alpha(50)  # Adjust this value to change the darkness level
 
     def create_floor_surface(self):
         floor_surface = pygame.Surface((WIDTH, HEIGHT))
@@ -211,7 +217,7 @@ class MansionScene(IndoorScene):
         self.boss = None
         self.setup_mansion()
         # Make the mansion darker
-        self.shade_surface.set_alpha(150)  # Adjust this value to change the darkness level
+        self.shade_surface.set_alpha(50)  # Adjust this value to change the darkness level
 
     def setup_mansion(self):
         # Place the boss in the mansion

@@ -173,6 +173,9 @@ class Building(pygame.sprite.Sprite):
                                         self.rect.top, 
                                         entrance_width, entrance_height)
 
+    def collide_with_player(self, player_rect):
+        return self.rect.colliderect(player_rect) and not self.entrance.colliderect(player_rect)
+
 class CoinCollectEffect(pygame.sprite.Sprite):
     def __init__(self, pos):
         super().__init__()
