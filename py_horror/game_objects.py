@@ -1,5 +1,6 @@
 import pygame
 import random
+import math
 from constants import *
 from sprites import player_sprite, coin_sprite, boss_sprite
 
@@ -32,10 +33,23 @@ class Player(Entity):
         self.attack_damage = 20
         self.coins = 0
         self.facing_right = True
+        self.target_pos = None
 
     def move(self, dx, dy, buildings):
-        new_x = self.rect.x + dx * self.speed
-        new_y = self.rect.y + dy * self.speed
+        if self.target_pos:
+            dx = self.target_pos[0] - self.rect.centerx
+            dy = self.target_pos[1] - self.rect.centery
+            distance = math.hypot(dx, dy)
+            
+            if distance < self.speed:
+                self.rect.center = self.target_pos
+                self.target_pos = None
+            else:
+                dx = dx / distance * self.speed
+                dy = dy / distance * self.speed
+        
+        new_x = self.rect.x + dx
+        new_y = self.rect.y + dy
 
         new_x = max(0, min(new_x, MAP_WIDTH - self.rect.width))
         new_y = max(0, min(new_y, MAP_HEIGHT - self.rect.height))
@@ -63,6 +77,9 @@ class Player(Entity):
             self.flip()
         elif dx < 0 and self.facing_right:
             self.flip()
+
+    def set_target(self, pos):
+        self.target_pos = pos
 
     def flip(self):
         self.image = pygame.transform.flip(self.image, True, False)

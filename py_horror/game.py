@@ -47,6 +47,9 @@ class Game:
                         self.show_instructions = not self.show_instructions
                     elif event.key == pygame.K_m:
                         self.show_minimap = not self.show_minimap
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left mouse button
+                        self.handle_left_click(event.pos)
 
             keys = pygame.key.get_pressed()
             dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
@@ -101,6 +104,14 @@ class Game:
         pygame.quit()
         return False
 
+    def handle_left_click(self, pos):
+        if self.current_scene == "village":
+            target_x = pos[0] + self.camera_x
+            target_y = pos[1] + self.camera_y
+            self.player.set_target((target_x, target_y))
+        else:
+            self.player.set_target(pos)
+
     def player_attack(self):
         if self.current_scene == "village":
             monsters = self.village.monsters
@@ -114,7 +125,6 @@ class Game:
 
         self.player.attack(monsters)
         
-        # Check for defeated monsters and spawn coins
         for monster in list(monsters):  # Create a copy of the list to safely remove items
             if monster.health <= 0:
                 monsters.remove(monster)
@@ -240,6 +250,7 @@ class Game:
         instructions = [
             "Game Instructions:",
             "- Use arrow keys to move",
+            "- Left-click to move to pointer",
             "- Press SPACE near green rectangles to enter/exit buildings",
             "- Press ENTER to attack nearby monsters",
             "- Collect coins dropped by defeated monsters",
