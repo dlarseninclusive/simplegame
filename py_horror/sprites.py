@@ -27,8 +27,8 @@ zombie_sprite = load_sprite('zombie.png', placeholder_color=(0, 0, 255))
 tracker_sprite = load_sprite('tracker.png', placeholder_color=(255, 0, 255))
 bat_sprite = load_sprite('bat.png', placeholder_color=(255, 255, 0))
 boss_sprite = load_sprite('boss.png', 0.2, placeholder_color=(255, 0, 0), placeholder_size=(64, 64))
-coin_sprite = load_sprite('coin.png',0.05, placeholder_color=(255, 215, 0))
-house_sprites = [load_sprite('house.png', placeholder_color=(139, 69, 19), placeholder_size=(100, 100)) for _ in range(4)]
+coin_sprite = load_sprite('coin.png', scale=0.025, placeholder_color=(255, 215, 0), placeholder_size=(8, 8))
+house_sprites = [load_sprite(f'house{i}.png', scale=0.15, placeholder_color=(139, 69, 19), placeholder_size=(100, 100)) for i in range(1, 6)]
 mansion_sprite = load_sprite('mansion.png', 0.3, placeholder_color=(70, 130, 180), placeholder_size=(150, 150))
 dirt_road_sprite = load_sprite('dirt_road.png', 0.5, placeholder_color=(101, 67, 33), placeholder_size=(50, 50))
 grass_sprite = load_sprite('grass.png', 0.5, placeholder_color=(34, 139, 34), placeholder_size=(50, 50))
@@ -36,18 +36,13 @@ grass_sprite = load_sprite('grass.png', 0.5, placeholder_color=(34, 139, 34), pl
 # Create magic missile sprite
 magic_missile_sprite = create_placeholder_sprite((0, 255, 255), 16, 16)  # Cyan color, 16x16 pixels
 
-# Create furniture sprites using Pygame's drawing functions
-def create_furniture_sprite(color, width, height):
-    surface = pygame.Surface((width, height), pygame.SRCALPHA)
-    pygame.draw.rect(surface, color, (0, 0, width, height))
-    return surface
-
+# Load furniture sprites
 furniture_sprites = [
-    create_furniture_sprite((139, 69, 19), 40, 40),  # Table (brown)
-    create_furniture_sprite((160, 82, 45), 30, 30),  # Chair (sienna)
-    create_furniture_sprite((101, 67, 33), 50, 60),  # Bookshelf (dark brown)
-    create_furniture_sprite((70, 130, 180), 60, 40),  # Bed (steel blue)
-    create_furniture_sprite((205, 133, 63), 45, 50)   # Cabinet (peru)
+    load_sprite('table.png', scale=0.25, placeholder_color=(139, 69, 19), placeholder_size=(40, 40)),
+    load_sprite('chair.png', scale=0.25, placeholder_color=(160, 82, 45), placeholder_size=(30, 30)),
+    load_sprite('bookshelf.png', scale=0.25, placeholder_color=(101, 67, 33), placeholder_size=(50, 60)),
+    load_sprite('bed.png', scale=0.25, placeholder_color=(70, 130, 180), placeholder_size=(60, 40)),
+    load_sprite('cabinet.png', scale=0.25, placeholder_color=(205, 133, 63), placeholder_size=(45, 50))
 ]
 
 print("Sprites loaded successfully.")
