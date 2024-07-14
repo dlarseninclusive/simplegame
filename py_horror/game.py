@@ -1,4 +1,5 @@
 import pygame
+import random
 from constants import *
 from entities import Player
 from environment import Village, IndoorScene, MansionScene
@@ -15,12 +16,22 @@ class Game:
         self.current_building = None
         self.near_entrance = False
         self.show_instructions = True
-        self.show_minimap = False  # New attribute for minimap toggle
+        self.show_minimap = False
         self.spawn_timer = 0
-        self.spawn_interval = 5 * FPS  # Spawn coins every 5 seconds
-
+        self.spawn_interval = 5 * FPS
         self.camera_x = 0
         self.camera_y = 0
+
+        # Shader effect setup
+        self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
+        self.shader_surface.set_alpha(50)  # Reduced opacity
+        self.rain_drops = []
+
+        # Lightning effect setup
+        self.lightning_active = False
+        self.lightning_start_time = 0
+        self.lightning_duration = 0
+        self.next_lightning_time = pygame.time.get_ticks() + random.randint(15 * 1000, 30 * 1000)  # Next lightning time between 15 to 30 seconds
 
     def run(self):
         running = True
@@ -35,26 +46,23 @@ class Game:
                         self.try_enter_exit_building()
                     elif event.key == pygame.K_i:
                         self.show_instructions = not self.show_instructions
-                    elif event.key == pygame.K_m:  # New key handler for minimap toggle
+                    elif event.key == pygame.K_m:
                         self.show_minimap = not self.show_minimap
-                    elif event.key == pygame.K_d:  # Debug mode toggle
-                        self.debug_mode = not self.debug_mode
-                        print(f"Debug mode: {'ON' if self.debug_mode else 'OFF'}")
 
             keys = pygame.key.get_pressed()
             dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
             dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
-            
+
             if self.current_scene == "village":
                 self.player.move(dx, dy, self.village.buildings)
                 self.village.update(self.player)
                 self.check_near_entrance()
                 if keys[pygame.K_RETURN]:
                     self.player.attack(self.village.monsters)
-                
+
                 self.spawn_timer += 1
                 if self.spawn_timer >= self.spawn_interval:
-                    self.village.spawn_coin()
+                    self.try_spawn_coin()
                     self.spawn_timer = 0
 
                 coins_collected = pygame.sprite.spritecollide(self.player, self.village.coins, True)
@@ -86,6 +94,7 @@ class Game:
 
             self.player.update()
             self.update_camera()
+            self.update_shader_effects()
             self.draw()
 
             pygame.display.flip()
@@ -93,6 +102,10 @@ class Game:
 
         pygame.quit()
         return False
+
+    def try_spawn_coin(self):
+        if len(self.village.coins) < 10 and random.random() < 0.1:  # Limit to 10 coins and 10% chance to spawn
+            self.village.spawn_coin()
 
     def update_camera(self):
         self.camera_x = max(0, min(self.player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
@@ -121,6 +134,24 @@ class Game:
             self.current_scene = "village"
             self.player.rect.center = self.current_building.entrance.center
             self.current_building = None
+
+    def update_shader_effects(self):
+        # Update rain
+        self.rain_drops = [(x, y + 5) for x, y in self.rain_drops if y < HEIGHT]
+        while len(self.rain_drops) < 100:
+            self.rain_drops.append((random.randint(0, WIDTH), random.randint(-10, 0)))
+
+        # Update lightning
+        current_time = pygame.time.get_ticks()
+        if self.lightning_active:
+            if current_time - self.lightning_start_time >= self.lightning_duration:
+                self.lightning_active = False
+                self.next_lightning_time = current_time + random.randint(15 * 1000, 30 * 1000)  # Next lightning time between 15 to 30 seconds
+        else:
+            if current_time >= self.next_lightning_time:
+                self.lightning_active = True
+                self.lightning_start_time = current_time
+                self.lightning_duration = random.randint(250, 750)  # Lightning duration between 0.25 to 0.75 seconds
 
     def draw(self):
         self.screen.fill(BLACK)
@@ -154,6 +185,37 @@ class Game:
         if self.show_minimap:
             self.draw_minimap()
 
+        self.draw_shader_effects()
+
+    def draw_shader_effects(self):
+        self.shader_surface.fill((105, 128, 180))  # More blue, less green tint
+
+        # Add more raindrops
+        num_new_drops = 10  # Number of new raindrops to add each frame
+        for _ in range(num_new_drops):
+            x = random.randint(0, self.shader_surface.get_width())
+            y = random.randint(0, self.shader_surface.get_height())
+            self.rain_drops.append((x, y))
+
+        # Update raindrop positions and remove those that have fallen off the screen
+        new_rain_drops = []
+        for x, y in self.rain_drops:
+            new_y = y + 5
+            if new_y < self.shader_surface.get_height():
+                new_rain_drops.append((x, new_y))
+            pygame.draw.line(self.shader_surface, (200, 200, 200), (x, new_y), (x - 1, new_y + 5))
+        self.rain_drops = new_rain_drops
+
+        # Apply lightning effect
+        if self.lightning_active:
+            lightning_surface = pygame.Surface((self.shader_surface.get_width(), self.shader_surface.get_height()))
+            lightning_surface.fill((255, 255, 255))  # Pure white for maximum brightness
+            lightning_surface.set_alpha(150)  # Adjust alpha for desired brightness
+            self.screen.blit(lightning_surface, (0, 0))
+
+        # Apply shader
+        self.screen.blit(self.shader_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
     def draw_instructions(self):
         instructions = [
             "Game Instructions:",
@@ -185,7 +247,6 @@ class Game:
         scale_x = minimap_size / MAP_WIDTH
         scale_y = minimap_size / MAP_HEIGHT
 
-        # Draw buildings
         for building in self.village.buildings:
             minimap_x = int(building.rect.x * scale_x)
             minimap_y = int(building.rect.y * scale_y)
@@ -193,7 +254,6 @@ class Game:
             minimap_height = max(3, int(building.rect.height * scale_y))
             pygame.draw.rect(minimap_surface, WHITE, (minimap_x, minimap_y, minimap_width, minimap_height))
 
-        # Draw player
         player_x = int(self.player.rect.centerx * scale_x)
         player_y = int(self.player.rect.centery * scale_y)
         pygame.draw.circle(minimap_surface, RED, (player_x, player_y), 2)
