@@ -34,7 +34,8 @@ dirt_road_sprite = load_sprite('dirt_road.png', 0.5, placeholder_color=(101, 67,
 grass_sprite = load_sprite('grass.png', 0.5, placeholder_color=(34, 139, 34), placeholder_size=(50, 50))
 
 # Create magic missile sprite
-magic_missile_sprite = create_placeholder_sprite((0, 255, 255), 16, 16)  # Cyan color, 16x16 pixels
+magic_missile_sprite = load_sprite('magic_missile.png', scale=0.025, placeholder_color=(255, 215, 0), placeholder_size=(8, 8))
+#create_placeholder_sprite((0, 255, 255), 16, 16)  # Cyan color, 16x16 pixels
 
 # Load furniture sprites
 furniture_sprites = [
