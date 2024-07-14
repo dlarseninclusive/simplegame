@@ -1,3 +1,4 @@
+import pygame
 from constants import *
 from sprites import *
 from base_classes import Entity
@@ -9,6 +10,7 @@ class Player(Entity):
         self.attack_range = 30
         self.attack_damage = 20
         self.coins = 0
+        self.facing_right = True
 
     def move(self, dx, dy, buildings):
         new_x = self.rect.x + dx * self.speed
@@ -34,6 +36,16 @@ class Player(Entity):
 
         self.rect.x = new_x
         self.rect.y = new_y
+
+        # Flip the character based on movement direction
+        if dx > 0 and not self.facing_right:
+            self.flip()
+        elif dx < 0 and self.facing_right:
+            self.flip()
+
+    def flip(self):
+        self.image = pygame.transform.flip(self.image, True, False)
+        self.facing_right = not self.facing_right
 
     def collect_coin(self, coin):
         self.coins += 1
