@@ -104,7 +104,7 @@ class Game:
         return False
 
     def try_spawn_coin(self):
-        if len(self.village.coins) < 10 and random.random() < 0.1:  # Limit to 10 coins and 10% chance to spawn
+        if len(self.village.coins) < 5 and random.random() < 0.05:  # Limit to 5 coins and 5% chance to spawn
             self.village.spawn_coin()
 
     def update_camera(self):
@@ -259,3 +259,7 @@ class Game:
         pygame.draw.circle(minimap_surface, RED, (player_x, player_y), 2)
 
         self.screen.blit(minimap_surface, (WIDTH - minimap_size - 10, 10))
+
+if __name__ == "__main__":
+    game = Game()
+    game.run()
