@@ -47,5 +47,14 @@ furniture_sprites = [
     load_sprite('bed.png', scale=0.45, placeholder_color=(70, 130, 180), placeholder_size=(60, 40)),
     load_sprite('cabinet.png', scale=0.25, placeholder_color=(205, 133, 63), placeholder_size=(45, 50))
 ]
+# Load headstone sprite
+headstone_sprite = load_sprite('headstone.png', scale=0.1, placeholder_color=(105, 105, 105), placeholder_size=(30, 40))
+
+# Load graveyard floor tile
+graveyard_floor_sprite = load_sprite('graveyard_floor.png', scale=0.2, placeholder_color=(50, 70, 50), placeholder_size=(64, 64))
+
+
+# Load graveyard entrance sprite
+graveyard_entrance_sprite = load_sprite('graveyard_entrance.png', 0.2, placeholder_color=(169, 169, 169), placeholder_size=(80, 80))
 
 print("Sprites loaded successfully.")

@@ -1,8 +1,8 @@
 import pygame
 import random
 from constants import *
-from game_objects import Player, Monster, BossMonster, Coin, Building, CoinCollectEffect, MagicMissile
-from environment import Village, IndoorScene, MansionScene
+from entities import Player, Monster, BossMonster, Coin, CoinCollectEffect, MagicMissile
+from environment import Village, IndoorScene, MansionScene, GraveyardScene
 
 class Game:
     def __init__(self):
@@ -12,6 +12,7 @@ class Game:
         self.village = Village()
         self.indoor_scenes = {building: IndoorScene(building) for building in self.village.buildings if building != self.village.mansion}
         self.mansion_scene = MansionScene(self.village.mansion)
+        self.graveyard_scene = GraveyardScene()
         self.current_scene = "village"
         self.current_building = None
         self.near_entrance = False
@@ -73,31 +74,7 @@ class Game:
         dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
 
         if self.current_scene == "village":
-            if self.player.target_pos:
-                dx = self.player.target_pos[0] - self.player.rect.centerx
-                dy = self.player.target_pos[1] - self.player.rect.centery
-                distance = (dx**2 + dy**2)**0.5
-                if distance < self.player.speed:
-                    self.player.rect.center = self.player.target_pos
-                    self.player.target_pos = None
-                else:
-                    dx = dx / distance * self.player.speed
-                    dy = dy / distance * self.player.speed
-            else:
-                dx *= self.player.speed
-                dy *= self.player.speed
-
-            new_rect = self.player.rect.move(dx, dy)
-            can_move = True
-            for building in self.village.buildings:
-                if building.collide_with_player(new_rect):
-                    can_move = False
-                    break
-            if can_move:
-                self.player.rect = new_rect
-            else:
-                self.player.target_pos = None  # Reset target position if we can't move there
-
+            self.player.move(dx, dy, self.village.buildings)
             self.village.update(self.player)
             self.check_near_entrance()
             if keys[pygame.K_RETURN]:
@@ -123,6 +100,20 @@ class Game:
                 self.effects.add(effect)
 
             self.update_magic_missiles(self.mansion_scene.monsters)
+
+        elif self.current_scene == "graveyard":
+            self.player.move(dx, dy, [])
+            self.graveyard_scene.update(self.player)
+            self.check_near_exit()
+            if keys[pygame.K_RETURN]:
+                self.player_attack()
+
+            coins_collected = pygame.sprite.spritecollide(self.player, self.graveyard_scene.coins, True)
+            for coin in coins_collected:
+                effect = self.player.collect_coin(coin)
+                self.effects.add(effect)
+
+            self.update_magic_missiles(self.graveyard_scene.monsters)
 
         else:  # Indoor scene
             current_indoor = self.indoor_scenes[self.current_building]
@@ -182,6 +173,9 @@ class Game:
         elif self.current_scene == "mansion":
             monsters = self.mansion_scene.monsters
             coins = self.mansion_scene.coins
+        elif self.current_scene == "graveyard":
+            monsters = self.graveyard_scene.monsters
+            coins = self.graveyard_scene.coins
         else:
             monsters = self.indoor_scenes[self.current_building].monsters
             coins = self.indoor_scenes[self.current_building].coins
@@ -201,6 +195,9 @@ class Game:
         elif self.current_scene == "mansion":
             monsters = self.mansion_scene.monsters
             coins = self.mansion_scene.coins
+        elif self.current_scene == "graveyard":
+            monsters = self.graveyard_scene.monsters
+            coins = self.graveyard_scene.coins
         else:
             monsters = self.indoor_scenes[self.current_building].monsters
             coins = self.indoor_scenes[self.current_building].coins
@@ -217,6 +214,8 @@ class Game:
     def update_camera(self):
         self.camera_x = max(0, min(self.player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
         self.camera_y = max(0, min(self.player.rect.centery - HEIGHT // 2, MAP_HEIGHT - HEIGHT))
+        self.player.camera_x = self.camera_x
+        self.player.camera_y = self.camera_y
 
     def check_near_entrance(self):
         self.near_entrance = False
@@ -225,6 +224,11 @@ class Game:
                 self.near_entrance = True
                 self.current_building = building
                 break
+        
+        # Check for graveyard entrance
+        if self.village.graveyard_entrance.entrance.colliderect(self.player.rect):
+            self.near_entrance = True
+            self.current_building = self.village.graveyard_entrance
 
     def check_near_exit(self):
         exit_rect = pygame.Rect(WIDTH // 2 - 20, HEIGHT - 20, 40, 20)
@@ -234,10 +238,12 @@ class Game:
         if self.current_scene == "village" and self.near_entrance:
             if self.current_building == self.village.mansion:
                 self.current_scene = "mansion"
+            elif self.current_building == self.village.graveyard_entrance:
+                self.current_scene = "graveyard"
             else:
                 self.current_scene = "indoor"
-            self.player.rect.midbottom = (WIDTH // 2, HEIGHT - 50)  # Adjusted position
-        elif (self.current_scene == "indoor" or self.current_scene == "mansion") and self.near_entrance:
+            self.player.rect.midbottom = (WIDTH // 2, HEIGHT - 50)
+        elif self.current_scene in ["indoor", "mansion", "graveyard"] and self.near_entrance:
             self.current_scene = "village"
             self.player.rect.center = self.current_building.entrance.center
             self.current_building = None
@@ -270,6 +276,8 @@ class Game:
             self.draw_shader_effects()
         elif self.current_scene == "mansion":
             self.mansion_scene.draw(self.screen, 0, 0)
+        elif self.current_scene == "graveyard":
+            self.graveyard_scene.draw(self.screen, 0, 0)
         else:
             self.indoor_scenes[self.current_building].draw(self.screen, 0, 0)
         
@@ -331,11 +339,11 @@ class Game:
         # Apply the shader
         self.screen.blit(self.shader_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         
-        # Darken buildings
+      # Darken buildings
         for building in self.village.buildings:
             dark_surface = pygame.Surface((building.rect.width, building.rect.height))
             dark_surface.fill((0, 0, 0))
-            dark_surface.set_alpha(0)  # Adjust this value to make buildings darker or lighter
+            dark_surface.set_alpha(100)  # Adjust this value to make buildings darker or lighter
             self.screen.blit(dark_surface, (building.rect.x - self.camera_x, building.rect.y - self.camera_y))
 
     def draw_instructions(self):
@@ -348,6 +356,7 @@ class Game:
             "- Press ENTER to attack nearby monsters",
             "- Collect coins dropped by defeated monsters",
             "- Defeat the boss monster in the mansion",
+            "- Explore the graveyard for more challenges",
             "- Press 'I' to toggle instructions",
             "- Press 'M' to toggle minimap",
             "- Press 'ESC' to exit the game"
@@ -377,6 +386,11 @@ class Game:
             minimap_width = max(3, int(building.rect.width * scale_x))
             minimap_height = max(3, int(building.rect.height * scale_y))
             pygame.draw.rect(minimap_surface, WHITE, (minimap_x, minimap_y, minimap_width, minimap_height))
+
+        # Draw graveyard entrance
+        graveyard_x = int(self.village.graveyard_entrance.rect.x * scale_x)
+        graveyard_y = int(self.village.graveyard_entrance.rect.y * scale_y)
+        pygame.draw.rect(minimap_surface, DARK_GREEN, (graveyard_x, graveyard_y, 5, 5))
 
         player_x = int(self.player.rect.centerx * scale_x)
         player_y = int(self.player.rect.centery * scale_y)

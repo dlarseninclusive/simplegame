@@ -16,6 +16,8 @@ BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 BROWN = (165, 42, 42)
 DARK_BROWN = (101, 67, 33)
+GRAY = (128, 128, 128)
+DARK_GREEN = (0, 100, 0)
 
 # Initialize pygame and create window
 pygame.init()

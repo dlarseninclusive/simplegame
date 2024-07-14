@@ -1,266 +1,242 @@
 import pygame
 import random
+import math
 from constants import *
-from entities import Player
-from environment import Village, IndoorScene, MansionScene
+from sprites import player_sprite, zombie_sprite, tracker_sprite, bat_sprite, boss_sprite, coin_sprite, magic_missile_sprite
 
-class Game:
+class Entity(pygame.sprite.Sprite):
+    def __init__(self, x, y, sprite, speed, max_health):
+        super().__init__()
+        self.image = sprite
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        self.speed = speed
+        self.max_health = max_health
+        self.health = max_health
+
+class Entity(pygame.sprite.Sprite):
+    def __init__(self, x, y, sprite, speed, max_health):
+        super().__init__()
+        self.image = sprite
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        self.speed = speed
+        self.max_health = max_health
+        self.health = max_health
+
+    def draw_health_bar(self, surface, camera_x, camera_y):
+        bar_width = self.rect.width * 1.5
+        bar_height = 10
+        fill = (self.health / self.max_health) * bar_width
+        outline_rect = pygame.Rect(self.rect.x - camera_x - (bar_width - self.rect.width) / 2, 
+                                   self.rect.y - 20 - camera_y, bar_width, bar_height)
+        fill_rect = pygame.Rect(self.rect.x - camera_x - (bar_width - self.rect.width) / 2, 
+                                self.rect.y - 20 - camera_y, fill, bar_height)
+        pygame.draw.rect(surface, RED, fill_rect)
+        pygame.draw.rect(surface, WHITE, outline_rect, 2)
+
+class Player(Entity):
     def __init__(self):
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
-        self.clock = pygame.time.Clock()
-        self.player = Player()
-        self.village = Village()
-        self.indoor_scenes = {building: IndoorScene(building) for building in self.village.buildings if building != self.village.mansion}
-        self.mansion_scene = MansionScene(self.village.mansion)
-        self.current_scene = "village"
-        self.current_building = None
-        self.near_entrance = False
-        self.show_instructions = True
-        self.show_minimap = False
+        super().__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2, player_sprite, 3, 100)
+        self.attack_cooldown = 0
+        self.attack_range = 30
+        self.attack_damage = 20
+        self.coins = 0
+        self.facing_right = True
+        self.original_image = self.image.copy()
+        self.target_pos = None
+        self.magic_missile_cooldown = 0
         self.camera_x = 0
         self.camera_y = 0
 
-        # Shader effect setup
-        self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
-        self.shader_surface.set_alpha(50)
-        self.rain_drops = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(100)]
-
-        # Lightning effect setup
-        self.lightning_active = False
-        self.lightning_start_time = 0
-        self.lightning_duration = 0
-        self.next_lightning_time = pygame.time.get_ticks() + random.randint(15 * 1000, 30 * 1000)
-
-    def run(self):
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
-                    elif event.key == pygame.K_SPACE:
-                        self.try_enter_exit_building()
-                    elif event.key == pygame.K_i:
-                        self.show_instructions = not self.show_instructions
-                    elif event.key == pygame.K_m:
-                        self.show_minimap = not self.show_minimap
-
-            keys = pygame.key.get_pressed()
-            dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
-            dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
-
-            if self.current_scene == "village":
-                self.player.move(dx, dy, self.village.buildings)
-                self.village.update(self.player)
-                self.check_near_entrance()
-                if keys[pygame.K_RETURN]:
-                    self.player_attack()
-
-                coins_collected = pygame.sprite.spritecollide(self.player, self.village.coins, True)
-                for coin in coins_collected:
-                    self.player.collect_coin(coin)
-
-            elif self.current_scene == "mansion":
-                self.player.move(dx, dy, [])
-                self.mansion_scene.update(self.player)
-                self.check_near_exit()
-                if keys[pygame.K_RETURN]:
-                    self.player_attack()
-
-                coins_collected = pygame.sprite.spritecollide(self.player, self.mansion_scene.coins, True)
-                for coin in coins_collected:
-                    self.player.collect_coin(coin)
-
-            else:  # Indoor scene
-                current_indoor = self.indoor_scenes[self.current_building]
-                self.player.move(dx, dy, [])
-                current_indoor.update(self.player)
-                self.check_near_exit()
-                if keys[pygame.K_RETURN]:
-                    self.player_attack()
-
-                coins_collected = pygame.sprite.spritecollide(self.player, current_indoor.coins, True)
-                for coin in coins_collected:
-                    self.player.collect_coin(coin)
-
-            self.player.update()
-            self.update_camera()
-            self.update_shader_effects()
-            self.draw()
-
-            pygame.display.flip()
-            self.clock.tick(FPS)
-
-        pygame.quit()
-        return False
-
-    def player_attack(self):
-        if self.current_scene == "village":
-            monsters = self.village.monsters
-            coins = self.village.coins
-        elif self.current_scene == "mansion":
-            monsters = self.mansion_scene.monsters
-            coins = self.mansion_scene.coins
-        else:
-            monsters = self.indoor_scenes[self.current_building].monsters
-            coins = self.indoor_scenes[self.current_building].coins
-
-        self.player.attack(monsters)
-        
-        # Check for defeated monsters and spawn coins
-        for monster in list(monsters):  # Create a copy of the list to safely remove items
-            if monster.health <= 0:
-                monsters.remove(monster)
-                dropped_coin = monster.drop_coin()
-                if dropped_coin:
-                    coins.add(dropped_coin)
-
-    def update_camera(self):
-        self.camera_x = max(0, min(self.player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
-        self.camera_y = max(0, min(self.player.rect.centery - HEIGHT // 2, MAP_HEIGHT - HEIGHT))
-
-    def check_near_entrance(self):
-        self.near_entrance = False
-        for building in self.village.buildings:
-            if building.entrance.colliderect(self.player.rect):
-                self.near_entrance = True
-                self.current_building = building
-                break
-
-    def check_near_exit(self):
-        exit_rect = pygame.Rect(WIDTH // 2 - 20, HEIGHT - 20, 40, 20)
-        self.near_entrance = exit_rect.colliderect(self.player.rect)
-
-    def try_enter_exit_building(self):
-        if self.current_scene == "village" and self.near_entrance:
-            if self.current_building == self.village.mansion:
-                self.current_scene = "mansion"
+    def move(self, dx, dy, buildings):
+        if self.target_pos:
+            dx = self.target_pos[0] - self.rect.centerx
+            dy = self.target_pos[1] - self.rect.centery
+            distance = math.hypot(dx, dy)
+            
+            if distance < self.speed:
+                self.rect.center = self.target_pos
+                self.target_pos = None
             else:
-                self.current_scene = "indoor"
-            self.player.rect.midbottom = (WIDTH // 2, HEIGHT - 40)
-        elif (self.current_scene == "indoor" or self.current_scene == "mansion") and self.near_entrance:
-            self.current_scene = "village"
-            self.player.rect.center = self.current_building.entrance.center
-            self.current_building = None
-
-    def update_shader_effects(self):
-        # Update rain
-        for i, (x, y) in enumerate(self.rain_drops):
-            y += 5
-            if y > HEIGHT:
-                y = random.randint(-10, 0)
-                x = random.randint(0, WIDTH)
-            self.rain_drops[i] = (x, y)
-
-        # Update lightning
-        current_time = pygame.time.get_ticks()
-        if self.lightning_active:
-            if current_time - self.lightning_start_time >= self.lightning_duration:
-                self.lightning_active = False
-                self.next_lightning_time = current_time + random.randint(15 * 1000, 30 * 1000)
+                dx = dx / distance * self.speed
+                dy = dy / distance * self.speed
         else:
-            if current_time >= self.next_lightning_time:
-                self.lightning_active = True
-                self.lightning_start_time = current_time
-                self.lightning_duration = random.randint(250, 750)
+            dx *= self.speed
+            dy *= self.speed
 
-    def draw(self):
-        self.screen.fill(BLACK)
-        if self.current_scene == "village":
-            self.village.draw(self.screen, self.camera_x, self.camera_y)
-        elif self.current_scene == "mansion":
-            self.mansion_scene.draw(self.screen, 0, 0)
-        else:
-            self.indoor_scenes[self.current_building].draw(self.screen, 0, 0)
+        new_x = self.rect.x + dx
+        new_y = self.rect.y + dy
+
+        new_x = max(0, min(new_x, MAP_WIDTH - self.rect.width))
+        new_y = max(0, min(new_y, MAP_HEIGHT - self.rect.height))
+
+        new_rect = self.rect.copy()
+        new_rect.x = new_x
+        new_rect.y = new_y
+
+        for building in buildings:
+            if building.collide_with_player(new_rect):
+                if dx > 0:
+                    new_x = building.rect.left - self.rect.width
+                elif dx < 0:
+                    new_x = building.rect.right
+                if dy > 0:
+                    new_y = building.rect.top - self.rect.height
+                elif dy < 0:
+                    new_y = building.rect.bottom
+
+        self.rect.x = new_x
+        self.rect.y = new_y
+
+    def update(self):
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+        if self.magic_missile_cooldown > 0:
+            self.magic_missile_cooldown -= 1
         
-        if self.current_scene == "village":
-            player_screen_x = self.player.rect.x - self.camera_x
-            player_screen_y = self.player.rect.y - self.camera_y
-        else:
-            player_screen_x = self.player.rect.x
-            player_screen_y = self.player.rect.y
-        self.screen.blit(self.player.image, (player_screen_x, player_screen_y))
-        self.player.draw_health_bar(self.screen, self.camera_x if self.current_scene == "village" else 0, 
-                                    self.camera_y if self.current_scene == "village" else 0)
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        self.face_mouse(mouse_x, mouse_y)
 
-        if self.near_entrance:
-            text = font.render("Press SPACE to enter/exit", True, YELLOW)
-            self.screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 20))
+    def face_mouse(self, mouse_x, mouse_y):
+        dx = mouse_x - (self.rect.centerx - self.camera_x)
+        if dx > 0 and not self.facing_right:
+            self.flip()
+        elif dx < 0 and self.facing_right:
+            self.flip()
 
-        coin_text = font.render(f"Coins: {self.player.coins}", True, YELLOW)
-        self.screen.blit(coin_text, (10, 10))
+    def flip(self):
+        self.facing_right = not self.facing_right
+        self.image = pygame.transform.flip(self.original_image, not self.facing_right, False)
 
-        if self.show_instructions:
-            self.draw_instructions()
+    def collect_coin(self, coin):
+        self.coins += 1
+        return CoinCollectEffect(coin.rect.center)
 
-        if self.show_minimap:
-            self.draw_minimap()
+    def attack(self, monsters):
+        if self.attack_cooldown == 0:
+            for monster in monsters:
+                if self.rect.colliderect(monster.rect):
+                    monster.health -= self.attack_damage
+                    print(f"Attacked {monster.__class__.__name__} for {self.attack_damage} damage")
+            self.attack_cooldown = 30
 
-        self.draw_shader_effects()
+    def fire_magic_missile(self, target_pos):
+        if self.magic_missile_cooldown == 0:
+            self.magic_missile_cooldown = 60  # 1 second cooldown at 60 FPS
+            return MagicMissile(self.rect.center, target_pos)
+        return None
 
-    def draw_shader_effects(self):
-        self.shader_surface.fill((105, 128, 180))  # Fill with a blue-ish color
+    def set_target(self, pos):
+        self.target_pos = pos
 
-        # Draw rain
-        for x, y in self.rain_drops:
-            pygame.draw.line(self.shader_surface, (200, 200, 200), (x, y), (x, y + 5))
+class Monster(Entity):
+    def __init__(self, x, y, sprite, speed, max_health, monster_type):
+        super().__init__(x, y, sprite, speed, max_health)
+        self.direction = pygame.math.Vector2(random.choice([-1, 1]), random.choice([-1, 1]))
+        self.monster_type = monster_type
+        self.coin_drop_chance = 0.5  # 50% chance to drop a coin
 
-        # Apply lightning effect
-        if self.lightning_active:
-            lightning_surface = pygame.Surface((WIDTH, HEIGHT))
-            lightning_surface.fill((255, 255, 255))  # White flash
-            lightning_surface.set_alpha(100)  # Semi-transparent
-            self.screen.blit(lightning_surface, (0, 0))
+    def update(self, player):
+        if random.random() < 0.01:
+            self.direction = pygame.math.Vector2(random.choice([-1, 1]), random.choice([-1, 1]))
+        self.rect.x += self.direction.x * self.speed
+        self.rect.y += self.direction.y * self.speed
 
-        # Apply the shader
-        self.screen.blit(self.shader_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        self.rect.x = max(0, min(self.rect.x, MAP_WIDTH - self.rect.width))
+        self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
 
-    def draw_instructions(self):
-        instructions = [
-            "Game Instructions:",
-            "- Use arrow keys to move",
-            "- Press SPACE near green rectangles to enter/exit buildings",
-            "- Press ENTER to attack nearby monsters",
-            "- Collect coins dropped by defeated monsters",
-            "- Defeat the boss monster in the mansion",
-            "- Press 'I' to toggle instructions",
-            "- Press 'M' to toggle minimap",
-            "- Press 'ESC' to exit the game"
-        ]
+    def drop_coin(self):
+        if random.random() < self.coin_drop_chance:
+            offset_x = random.randint(-30, 30)
+            offset_y = random.randint(-30, 30)
+            return Coin(self.rect.centerx + offset_x, self.rect.centery + offset_y)
+        return None
+
+    def draw_health_bar(self, surface, camera_x, camera_y):
+        super().draw_health_bar(surface, camera_x, camera_y)
         
-        instruction_surface = pygame.Surface((WIDTH, HEIGHT))
-        instruction_surface.set_alpha(200)
-        instruction_surface.fill(BLACK)
-        self.screen.blit(instruction_surface, (0, 0))
+        # Draw monster type label
+        font = pygame.font.Font(None, 20)
+        text = font.render(self.monster_type, True, WHITE)
+        text_rect = text.get_rect()
+        text_rect.centerx = self.rect.centerx - camera_x
+        text_rect.bottom = self.rect.top - camera_y - 25
+        surface.blit(text, text_rect)
 
-        for i, line in enumerate(instructions):
-            text = small_font.render(line, True, WHITE)
-            self.screen.blit(text, (20, 20 + i * 30))
+class BossMonster(Entity):
+    def __init__(self, x, y):
+        super().__init__(x, y, boss_sprite, 1, 200)
+        self.monster_type = "Boss"
+        self.coin_drop_chance = 1.0  # Boss always drops a coin
 
-    def draw_minimap(self):
-        minimap_size = 150
-        minimap_surface = pygame.Surface((minimap_size, minimap_size))
-        minimap_surface.fill(BLACK)
-        minimap_surface.set_alpha(200)
+    def update(self, player):
+        # Add boss-specific behavior here
+        pass
 
-        scale_x = minimap_size / MAP_WIDTH
-        scale_y = minimap_size / MAP_HEIGHT
+    def drop_coin(self):
+        offset_x = random.randint(-30, 30)
+        offset_y = random.randint(-30, 30)
+        return Coin(self.rect.centerx + offset_x, self.rect.centery + offset_y)
 
-        for building in self.village.buildings:
-            minimap_x = int(building.rect.x * scale_x)
-            minimap_y = int(building.rect.y * scale_y)
-            minimap_width = max(3, int(building.rect.width * scale_x))
-            minimap_height = max(3, int(building.rect.height * scale_y))
-            pygame.draw.rect(minimap_surface, WHITE, (minimap_x, minimap_y, minimap_width, minimap_height))
+class Coin(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__()
+        self.image = coin_sprite
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
 
-        player_x = int(self.player.rect.centerx * scale_x)
-        player_y = int(self.player.rect.centery * scale_y)
-        pygame.draw.circle(minimap_surface, RED, (player_x, player_y), 2)
+class Building(pygame.sprite.Sprite):
+    def __init__(self, pos, sprite, facing_south=True):
+        super().__init__()
+        self.image = sprite
+        self.rect = self.image.get_rect()
+        self.rect.topleft = pos
+        entrance_width = 50
+        entrance_height = 12
+        if facing_south:
+            self.entrance = pygame.Rect(self.rect.centerx - entrance_width // 2, 
+                                        self.rect.bottom - entrance_height, 
+                                        entrance_width, entrance_height)
+        else:
+            self.entrance = pygame.Rect(self.rect.centerx - entrance_width // 2, 
+                                        self.rect.top, 
+                                        entrance_width, entrance_height)
 
-        self.screen.blit(minimap_surface, (WIDTH - minimap_size - 10, 10))
+    def collide_with_player(self, player_rect):
+        return self.rect.colliderect(player_rect) and not self.entrance.colliderect(player_rect)
 
-if __name__ == "__main__":
-    game = Game()
-    game.run()
+class CoinCollectEffect(pygame.sprite.Sprite):
+    def __init__(self, pos):
+        super().__init__()
+        self.image = pygame.Surface((50, 20), pygame.SRCALPHA)
+        self.font = pygame.font.Font(None, 20)
+        self.text = self.font.render("+1 Coin", True, YELLOW)
+        self.image.blit(self.text, (0, 0))
+        self.rect = self.image.get_rect(center=pos)
+        self.timer = 60  # Effect lasts for 60 frames (1 second at 60 FPS)
+
+    def update(self):
+        self.rect.y -= 1
+        self.timer -= 1
+        if self.timer <= 0:
+            self.kill()
+
+class MagicMissile(pygame.sprite.Sprite):
+    def __init__(self, start_pos, target_pos):
+        super().__init__()
+        self.image = magic_missile_sprite
+        self.rect = self.image.get_rect()
+        self.rect.center = start_pos
+        self.speed = 5
+        self.damage = 30
+        angle = math.atan2(target_pos[1] - start_pos[1], target_pos[0] - start_pos[0])
+        self.velocity = pygame.math.Vector2(math.cos(angle) * self.speed, math.sin(angle) * self.speed)
+
+    def update(self):
+        self.rect.x += self.velocity.x
+        self.rect.y += self.velocity.y
+
+        # Remove the missile if it goes off-screen
+        if not pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT).colliderect(self.rect):
+            self.kill()

@@ -15,8 +15,8 @@ class Entity(pygame.sprite.Sprite):
         self.health = max_health
 
     def draw_health_bar(self, surface, camera_x, camera_y):
-        bar_width = self.rect.width * 1.5
-        bar_height = 10
+        bar_width = self.rect.width * 12
+        bar_height = 12
         fill = (self.health / self.max_health) * bar_width
         outline_rect = pygame.Rect(self.rect.x - camera_x - (bar_width - self.rect.width) / 2, 
                                    self.rect.y - 20 - camera_y, bar_width, bar_height)
