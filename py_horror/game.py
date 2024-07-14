@@ -1,7 +1,7 @@
 import pygame
 import random
 from constants import *
-from entities import Player
+from game_objects import Player, Monster, BossMonster, Coin, Building
 from environment import Village, IndoorScene, MansionScene
 
 class Game:
@@ -17,21 +17,19 @@ class Game:
         self.near_entrance = False
         self.show_instructions = True
         self.show_minimap = False
-        self.spawn_timer = 0
-        self.spawn_interval = 5 * FPS
         self.camera_x = 0
         self.camera_y = 0
 
         # Shader effect setup
         self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
-        self.shader_surface.set_alpha(50)  # Reduced opacity
-        self.rain_drops = []
+        self.shader_surface.set_alpha(50)
+        self.rain_drops = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(100)]
 
         # Lightning effect setup
         self.lightning_active = False
         self.lightning_start_time = 0
         self.lightning_duration = 0
-        self.next_lightning_time = pygame.time.get_ticks() + random.randint(15 * 1000, 30 * 1000)  # Next lightning time between 15 to 30 seconds
+        self.next_lightning_time = pygame.time.get_ticks() + random.randint(15 * 1000, 30 * 1000)
 
     def run(self):
         running = True
@@ -58,12 +56,7 @@ class Game:
                 self.village.update(self.player)
                 self.check_near_entrance()
                 if keys[pygame.K_RETURN]:
-                    self.player.attack(self.village.monsters)
-
-                self.spawn_timer += 1
-                if self.spawn_timer >= self.spawn_interval:
-                    self.try_spawn_coin()
-                    self.spawn_timer = 0
+                    self.player_attack()
 
                 coins_collected = pygame.sprite.spritecollide(self.player, self.village.coins, True)
                 for coin in coins_collected:
@@ -74,7 +67,7 @@ class Game:
                 self.mansion_scene.update(self.player)
                 self.check_near_exit()
                 if keys[pygame.K_RETURN]:
-                    self.player.attack(self.mansion_scene.monsters)
+                    self.player_attack()
 
                 coins_collected = pygame.sprite.spritecollide(self.player, self.mansion_scene.coins, True)
                 for coin in coins_collected:
@@ -86,7 +79,7 @@ class Game:
                 current_indoor.update(self.player)
                 self.check_near_exit()
                 if keys[pygame.K_RETURN]:
-                    self.player.attack(current_indoor.monsters)
+                    self.player_attack()
 
                 coins_collected = pygame.sprite.spritecollide(self.player, current_indoor.coins, True)
                 for coin in coins_collected:
@@ -103,9 +96,26 @@ class Game:
         pygame.quit()
         return False
 
-    def try_spawn_coin(self):
-        if len(self.village.coins) < 5 and random.random() < 0.05:  # Limit to 5 coins and 5% chance to spawn
-            self.village.spawn_coin()
+    def player_attack(self):
+        if self.current_scene == "village":
+            monsters = self.village.monsters
+            coins = self.village.coins
+        elif self.current_scene == "mansion":
+            monsters = self.mansion_scene.monsters
+            coins = self.mansion_scene.coins
+        else:
+            monsters = self.indoor_scenes[self.current_building].monsters
+            coins = self.indoor_scenes[self.current_building].coins
+
+        self.player.attack(monsters)
+        
+        # Check for defeated monsters and spawn coins
+        for monster in list(monsters):  # Create a copy of the list to safely remove items
+            if monster.health <= 0:
+                monsters.remove(monster)
+                dropped_coin = monster.drop_coin()
+                if dropped_coin:
+                    coins.add(dropped_coin)
 
     def update_camera(self):
         self.camera_x = max(0, min(self.player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
@@ -137,21 +147,24 @@ class Game:
 
     def update_shader_effects(self):
         # Update rain
-        self.rain_drops = [(x, y + 5) for x, y in self.rain_drops if y < HEIGHT]
-        while len(self.rain_drops) < 100:
-            self.rain_drops.append((random.randint(0, WIDTH), random.randint(-10, 0)))
+        for i, (x, y) in enumerate(self.rain_drops):
+            y += 5
+            if y > HEIGHT:
+                y = random.randint(-10, 0)
+                x = random.randint(0, WIDTH)
+            self.rain_drops[i] = (x, y)
 
         # Update lightning
         current_time = pygame.time.get_ticks()
         if self.lightning_active:
             if current_time - self.lightning_start_time >= self.lightning_duration:
                 self.lightning_active = False
-                self.next_lightning_time = current_time + random.randint(15 * 1000, 30 * 1000)  # Next lightning time between 15 to 30 seconds
+                self.next_lightning_time = current_time + random.randint(15 * 1000, 30 * 1000)
         else:
             if current_time >= self.next_lightning_time:
                 self.lightning_active = True
                 self.lightning_start_time = current_time
-                self.lightning_duration = random.randint(250, 750)  # Lightning duration between 0.25 to 0.75 seconds
+                self.lightning_duration = random.randint(250, 750)
 
     def draw(self):
         self.screen.fill(BLACK)
@@ -188,32 +201,20 @@ class Game:
         self.draw_shader_effects()
 
     def draw_shader_effects(self):
-        self.shader_surface.fill((105, 128, 180))  # More blue, less green tint
+        self.shader_surface.fill((105, 128, 180))  # Fill with a blue-ish color
 
-        # Add more raindrops
-        num_new_drops = 10  # Number of new raindrops to add each frame
-        for _ in range(num_new_drops):
-            x = random.randint(0, self.shader_surface.get_width())
-            y = random.randint(0, self.shader_surface.get_height())
-            self.rain_drops.append((x, y))
-
-        # Update raindrop positions and remove those that have fallen off the screen
-        new_rain_drops = []
+        # Draw rain
         for x, y in self.rain_drops:
-            new_y = y + 5
-            if new_y < self.shader_surface.get_height():
-                new_rain_drops.append((x, new_y))
-            pygame.draw.line(self.shader_surface, (200, 200, 200), (x, new_y), (x - 1, new_y + 5))
-        self.rain_drops = new_rain_drops
+            pygame.draw.line(self.shader_surface, (200, 200, 200), (x, y), (x, y + 5))
 
         # Apply lightning effect
         if self.lightning_active:
-            lightning_surface = pygame.Surface((self.shader_surface.get_width(), self.shader_surface.get_height()))
-            lightning_surface.fill((255, 255, 255))  # Pure white for maximum brightness
-            lightning_surface.set_alpha(150)  # Adjust alpha for desired brightness
+            lightning_surface = pygame.Surface((WIDTH, HEIGHT))
+            lightning_surface.fill((255, 255, 255))  # White flash
+            lightning_surface.set_alpha(100)  # Semi-transparent
             self.screen.blit(lightning_surface, (0, 0))
 
-        # Apply shader
+        # Apply the shader
         self.screen.blit(self.shader_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
     def draw_instructions(self):
@@ -222,7 +223,7 @@ class Game:
             "- Use arrow keys to move",
             "- Press SPACE near green rectangles to enter/exit buildings",
             "- Press ENTER to attack nearby monsters",
-            "- Collect coins to buy upgrades",
+            "- Collect coins dropped by defeated monsters",
             "- Defeat the boss monster in the mansion",
             "- Press 'I' to toggle instructions",
             "- Press 'M' to toggle minimap",

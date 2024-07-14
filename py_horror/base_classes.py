@@ -14,8 +14,8 @@ class Entity(pygame.sprite.Sprite):
         self.health = max_health
 
     def draw_health_bar(self, surface, camera_x, camera_y):
-        bar_width = self.rect.width * 1.5  # Increased width
-        bar_height = 10  # Increased height
+        bar_width = self.rect.width * 1.5
+        bar_height = 10
         fill = (self.health / self.max_health) * bar_width
         outline_rect = pygame.Rect(self.rect.x - camera_x - (bar_width - self.rect.width) / 2, 
                                    self.rect.y - 20 - camera_y, bar_width, bar_height)
@@ -29,6 +29,7 @@ class Monster(Entity):
         super().__init__(x, y, sprite, speed, max_health)
         self.direction = pygame.math.Vector2(random.choice([-1, 1]), random.choice([-1, 1]))
         self.monster_type = monster_type
+        self.coin_drop_chance = 0.5  # 50% chance to drop a coin
 
     def update(self):
         if random.random() < 0.01:
@@ -39,13 +40,22 @@ class Monster(Entity):
         self.rect.x = max(0, min(self.rect.x, MAP_WIDTH - self.rect.width))
         self.rect.y = max(0, min(self.rect.y, MAP_HEIGHT - self.rect.height))
 
+    def drop_coin(self):
+        if random.random() < self.coin_drop_chance:
+            return Coin(self.rect.centerx, self.rect.centery)
+        return None
+
 class BossMonster(Entity):
     def __init__(self, x, y):
         super().__init__(x, y, boss_sprite, 1, 200)
         self.monster_type = "Boss"
+        self.coin_drop_chance = 1.0  # Boss always drops a coin
 
     def update(self):
         pass
+
+    def drop_coin(self):
+        return Coin(self.rect.centerx, self.rect.centery)
 
 class Coin(pygame.sprite.Sprite):
     def __init__(self, x, y):
