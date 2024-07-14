@@ -105,7 +105,10 @@ class Game:
             self.effects.update()
             self.magic_missiles.update()
             self.update_camera()
-            self.update_shader_effects()
+            
+            if self.current_scene == "village":
+                self.update_shader_effects()
+            
             self.draw()
 
             pygame.display.flip()
@@ -237,6 +240,7 @@ class Game:
         self.screen.fill(BLACK)
         if self.current_scene == "village":
             self.village.draw(self.screen, self.camera_x, self.camera_y)
+            self.draw_shader_effects()
         elif self.current_scene == "mansion":
             self.mansion_scene.draw(self.screen, 0, 0)
         else:
@@ -283,8 +287,6 @@ class Game:
         if self.show_minimap:
             self.draw_minimap()
 
-        self.draw_shader_effects()
-
     def draw_shader_effects(self):
         self.shader_surface.fill((105, 128, 180))  # Fill with a blue-ish color
 
@@ -301,6 +303,13 @@ class Game:
 
         # Apply the shader
         self.screen.blit(self.shader_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        # Darken buildings
+        for building in self.village.buildings:
+            dark_surface = pygame.Surface((building.rect.width, building.rect.height))
+            dark_surface.fill((0, 0, 0))
+            dark_surface.set_alpha(100)  # Adjust this value to make buildings darker or lighter
+            self.screen.blit(dark_surface, (building.rect.x - self.camera_x, building.rect.y - self.camera_y))
 
     def draw_instructions(self):
         instructions = [

@@ -4,6 +4,14 @@ from constants import *
 from game_objects import Building, Monster, BossMonster
 from sprites import house_sprites, mansion_sprite, zombie_sprite, tracker_sprite, bat_sprite, dirt_road_sprite, grass_sprite, furniture_sprites, floor_sprite
 
+def create_torch_sprite():
+    torch = pygame.Surface((20, 40), pygame.SRCALPHA)
+    pygame.draw.rect(torch, (139, 69, 19), (8, 20, 4, 20))  # Handle
+    pygame.draw.circle(torch, (255, 165, 0), (10, 10), 10)  # Flame
+    return torch
+
+torch_sprite = create_torch_sprite()
+
 class Village:
     def __init__(self):
         self.buildings = pygame.sprite.Group()
@@ -99,8 +107,12 @@ class IndoorScene:
         self.monsters = pygame.sprite.Group()
         self.coins = pygame.sprite.Group()
         self.furniture = pygame.sprite.Group()
+        self.torches = pygame.sprite.Group()
         self.floor_surface = self.create_floor_surface()
         self.setup_room()
+        self.shade_surface = pygame.Surface((WIDTH, HEIGHT))
+        self.shade_surface.fill((0, 0, 0))
+        self.shade_surface.set_alpha(100)  # Adjust this value to change the darkness level
 
     def create_floor_surface(self):
         floor_surface = pygame.Surface((WIDTH, HEIGHT))
@@ -115,11 +127,11 @@ class IndoorScene:
     def setup_room(self):
         room_width, room_height = WIDTH, HEIGHT
         furniture_positions = [
-            (room_width * 0.2, room_height * 0.2),  # Top left
-            (room_width * 0.8, room_height * 0.2),  # Top right
-            (room_width * 0.2, room_height * 0.8),  # Bottom left
-            (room_width * 0.8, room_height * 0.8),  # Bottom right
-            (room_width * 0.5, room_height * 0.5),  # Center
+            (room_width * 0.2, room_height * 0.2),
+            (room_width * 0.8, room_height * 0.2),
+            (room_width * 0.2, room_height * 0.8),
+            (room_width * 0.8, room_height * 0.8),
+            (room_width * 0.5, room_height * 0.5),
         ]
 
         for pos in furniture_positions:
@@ -127,6 +139,20 @@ class IndoorScene:
             furniture.image = random.choice(furniture_sprites)
             furniture.rect = furniture.image.get_rect(center=pos)
             self.furniture.add(furniture)
+
+        # Add torches
+        torch_positions = [
+            (50, 50),
+            (WIDTH - 50, 50),
+            (50, HEIGHT - 50),
+            (WIDTH - 50, HEIGHT - 50),
+        ]
+
+        for pos in torch_positions:
+            torch = pygame.sprite.Sprite()
+            torch.image = torch_sprite
+            torch.rect = torch.image.get_rect(center=pos)
+            self.torches.add(torch)
 
         # Add monsters
         for _ in range(random.randint(1, 3)):
@@ -156,6 +182,10 @@ class IndoorScene:
         for furniture in self.furniture:
             screen.blit(furniture.image, (furniture.rect.x - camera_x, furniture.rect.y - camera_y))
         
+        # Draw torches
+        for torch in self.torches:
+            screen.blit(torch.image, (torch.rect.x - camera_x, torch.rect.y - camera_y))
+        
         # Draw exit
         exit_rect = pygame.Rect(WIDTH // 2 - 20, HEIGHT - 20, 40, 20)
         pygame.draw.rect(screen, GREEN, exit_rect)
@@ -172,11 +202,16 @@ class IndoorScene:
         for coin in self.coins:
             screen.blit(coin.image, (coin.rect.x - camera_x, coin.rect.y - camera_y))
 
+        # Apply shading
+        screen.blit(self.shade_surface, (0, 0))
+
 class MansionScene(IndoorScene):
     def __init__(self, building):
         super().__init__(building)
         self.boss = None
         self.setup_mansion()
+        # Make the mansion darker
+        self.shade_surface.set_alpha(150)  # Adjust this value to change the darkness level
 
     def setup_mansion(self):
         # Place the boss in the mansion
