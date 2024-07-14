@@ -24,7 +24,7 @@ class Game:
 
         # Shader effect setup
         self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
-        self.shader_surface.set_alpha(75)
+        self.shader_surface.set_alpha(50)
         self.rain_drops = [(random.randint(0, WIDTH), random.randint(0, HEIGHT)) for _ in range(100)]
 
         # Lightning effect setup
@@ -54,57 +54,7 @@ class Game:
                     elif event.button == 3:  # Right mouse button
                         self.handle_right_click(event.pos)
 
-            keys = pygame.key.get_pressed()
-            dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
-            dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
-
-            if self.current_scene == "village":
-                self.player.move(dx, dy, self.village.buildings)
-                self.village.update(self.player)
-                self.check_near_entrance()
-                if keys[pygame.K_RETURN]:
-                    self.player_attack()
-
-                coins_collected = pygame.sprite.spritecollide(self.player, self.village.coins, True)
-                for coin in coins_collected:
-                    effect = self.player.collect_coin(coin)
-                    self.effects.add(effect)
-
-                self.update_magic_missiles(self.village.monsters)
-
-            elif self.current_scene == "mansion":
-                self.player.move(dx, dy, [])
-                self.mansion_scene.update(self.player)
-                self.check_near_exit()
-                if keys[pygame.K_RETURN]:
-                    self.player_attack()
-
-                coins_collected = pygame.sprite.spritecollide(self.player, self.mansion_scene.coins, True)
-                for coin in coins_collected:
-                    effect = self.player.collect_coin(coin)
-                    self.effects.add(effect)
-
-                self.update_magic_missiles(self.mansion_scene.monsters)
-
-            else:  # Indoor scene
-                current_indoor = self.indoor_scenes[self.current_building]
-                self.player.move(dx, dy, [])
-                current_indoor.update(self.player)
-                self.check_near_exit()
-                if keys[pygame.K_RETURN]:
-                    self.player_attack()
-
-                coins_collected = pygame.sprite.spritecollide(self.player, current_indoor.coins, True)
-                for coin in coins_collected:
-                    effect = self.player.collect_coin(coin)
-                    self.effects.add(effect)
-
-                self.update_magic_missiles(current_indoor.monsters)
-
-            self.player.update()
-            self.effects.update()
-            self.magic_missiles.update()
-            self.update_camera()
+            self.update()
             
             if self.current_scene == "village":
                 self.update_shader_effects()
@@ -116,6 +66,83 @@ class Game:
 
         pygame.quit()
         return False
+
+    def update(self):
+        keys = pygame.key.get_pressed()
+        dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
+        dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
+
+        if self.current_scene == "village":
+            if self.player.target_pos:
+                dx = self.player.target_pos[0] - self.player.rect.centerx
+                dy = self.player.target_pos[1] - self.player.rect.centery
+                distance = (dx**2 + dy**2)**0.5
+                if distance < self.player.speed:
+                    self.player.rect.center = self.player.target_pos
+                    self.player.target_pos = None
+                else:
+                    dx = dx / distance * self.player.speed
+                    dy = dy / distance * self.player.speed
+            else:
+                dx *= self.player.speed
+                dy *= self.player.speed
+
+            new_rect = self.player.rect.move(dx, dy)
+            can_move = True
+            for building in self.village.buildings:
+                if building.collide_with_player(new_rect):
+                    can_move = False
+                    break
+            if can_move:
+                self.player.rect = new_rect
+            else:
+                self.player.target_pos = None  # Reset target position if we can't move there
+
+            self.village.update(self.player)
+            self.check_near_entrance()
+            if keys[pygame.K_RETURN]:
+                self.player_attack()
+
+            coins_collected = pygame.sprite.spritecollide(self.player, self.village.coins, True)
+            for coin in coins_collected:
+                effect = self.player.collect_coin(coin)
+                self.effects.add(effect)
+
+            self.update_magic_missiles(self.village.monsters)
+
+        elif self.current_scene == "mansion":
+            self.player.move(dx, dy, [])
+            self.mansion_scene.update(self.player)
+            self.check_near_exit()
+            if keys[pygame.K_RETURN]:
+                self.player_attack()
+
+            coins_collected = pygame.sprite.spritecollide(self.player, self.mansion_scene.coins, True)
+            for coin in coins_collected:
+                effect = self.player.collect_coin(coin)
+                self.effects.add(effect)
+
+            self.update_magic_missiles(self.mansion_scene.monsters)
+
+        else:  # Indoor scene
+            current_indoor = self.indoor_scenes[self.current_building]
+            self.player.move(dx, dy, [])
+            current_indoor.update(self.player)
+            self.check_near_exit()
+            if keys[pygame.K_RETURN]:
+                self.player_attack()
+
+            coins_collected = pygame.sprite.spritecollide(self.player, current_indoor.coins, True)
+            for coin in coins_collected:
+                effect = self.player.collect_coin(coin)
+                self.effects.add(effect)
+
+            self.update_magic_missiles(current_indoor.monsters)
+
+        self.player.update()
+        self.effects.update()
+        self.magic_missiles.update()
+        self.update_camera()
 
     def handle_left_click(self, pos):
         if self.current_scene == "village":
@@ -209,7 +236,7 @@ class Game:
                 self.current_scene = "mansion"
             else:
                 self.current_scene = "indoor"
-            self.player.rect.midbottom = (WIDTH // 2, HEIGHT - 40)
+            self.player.rect.midbottom = (WIDTH // 2, HEIGHT - 50)  # Adjusted position
         elif (self.current_scene == "indoor" or self.current_scene == "mansion") and self.near_entrance:
             self.current_scene = "village"
             self.player.rect.center = self.current_building.entrance.center
@@ -303,7 +330,7 @@ class Game:
 
         # Apply the shader
         self.screen.blit(self.shader_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-
+        
         # Darken buildings
         for building in self.village.buildings:
             dark_surface = pygame.Surface((building.rect.width, building.rect.height))
