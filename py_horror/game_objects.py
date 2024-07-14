@@ -2,7 +2,7 @@ import pygame
 import random
 import math
 from constants import *
-from sprites import player_sprite, coin_sprite, boss_sprite
+from sprites import player_sprite, coin_sprite, boss_sprite, magic_missile_sprite
 
 class Entity(pygame.sprite.Sprite):
     def __init__(self, x, y, sprite, speed, max_health):
@@ -34,6 +34,7 @@ class Player(Entity):
         self.coins = 0
         self.facing_right = True
         self.target_pos = None
+        self.magic_missile_cooldown = 0
 
     def move(self, dx, dy, buildings):
         if self.target_pos:
@@ -99,9 +100,17 @@ class Player(Entity):
         else:
             self.attack_cooldown -= 1
 
+    def fire_magic_missile(self, target_pos):
+        if self.magic_missile_cooldown == 0:
+            self.magic_missile_cooldown = 60  # 1 second cooldown at 60 FPS
+            return MagicMissile(self.rect.center, target_pos)
+        return None
+
     def update(self):
         if self.attack_cooldown > 0:
             self.attack_cooldown -= 1
+        if self.magic_missile_cooldown > 0:
+            self.magic_missile_cooldown -= 1
 
 class Monster(Entity):
     def __init__(self, x, y, sprite, speed, max_health, monster_type):
@@ -178,4 +187,23 @@ class CoinCollectEffect(pygame.sprite.Sprite):
         self.rect.y -= 1
         self.timer -= 1
         if self.timer <= 0:
+            self.kill()
+
+class MagicMissile(pygame.sprite.Sprite):
+    def __init__(self, start_pos, target_pos):
+        super().__init__()
+        self.image = magic_missile_sprite
+        self.rect = self.image.get_rect()
+        self.rect.center = start_pos
+        self.speed = 5
+        self.damage = 30
+        angle = math.atan2(target_pos[1] - start_pos[1], target_pos[0] - start_pos[0])
+        self.velocity = pygame.math.Vector2(math.cos(angle) * self.speed, math.sin(angle) * self.speed)
+
+    def update(self):
+        self.rect.x += self.velocity.x
+        self.rect.y += self.velocity.y
+
+        # Remove the missile if it goes off-screen
+        if not pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT).colliderect(self.rect):
             self.kill()

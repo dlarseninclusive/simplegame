@@ -1,7 +1,7 @@
 import pygame
 import random
 from constants import *
-from game_objects import Player, Monster, BossMonster, Coin, Building, CoinCollectEffect
+from game_objects import Player, Monster, BossMonster, Coin, Building, CoinCollectEffect, MagicMissile
 from environment import Village, IndoorScene, MansionScene
 
 class Game:
@@ -20,6 +20,7 @@ class Game:
         self.camera_x = 0
         self.camera_y = 0
         self.effects = pygame.sprite.Group()
+        self.magic_missiles = pygame.sprite.Group()
 
         # Shader effect setup
         self.shader_surface = pygame.Surface((WIDTH, HEIGHT))
@@ -50,6 +51,8 @@ class Game:
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left mouse button
                         self.handle_left_click(event.pos)
+                    elif event.button == 3:  # Right mouse button
+                        self.handle_right_click(event.pos)
 
             keys = pygame.key.get_pressed()
             dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
@@ -67,6 +70,8 @@ class Game:
                     effect = self.player.collect_coin(coin)
                     self.effects.add(effect)
 
+                self.update_magic_missiles(self.village.monsters)
+
             elif self.current_scene == "mansion":
                 self.player.move(dx, dy, [])
                 self.mansion_scene.update(self.player)
@@ -78,6 +83,8 @@ class Game:
                 for coin in coins_collected:
                     effect = self.player.collect_coin(coin)
                     self.effects.add(effect)
+
+                self.update_magic_missiles(self.mansion_scene.monsters)
 
             else:  # Indoor scene
                 current_indoor = self.indoor_scenes[self.current_building]
@@ -92,8 +99,11 @@ class Game:
                     effect = self.player.collect_coin(coin)
                     self.effects.add(effect)
 
+                self.update_magic_missiles(current_indoor.monsters)
+
             self.player.update()
             self.effects.update()
+            self.magic_missiles.update()
             self.update_camera()
             self.update_shader_effects()
             self.draw()
@@ -112,6 +122,29 @@ class Game:
         else:
             self.player.set_target(pos)
 
+    def handle_right_click(self, pos):
+        if self.current_scene == "village":
+            target_x = pos[0] + self.camera_x
+            target_y = pos[1] + self.camera_y
+            target_pos = (target_x, target_y)
+        else:
+            target_pos = pos
+
+        magic_missile = self.player.fire_magic_missile(target_pos)
+        if magic_missile:
+            self.magic_missiles.add(magic_missile)
+
+    def update_magic_missiles(self, monsters):
+        for missile in self.magic_missiles:
+            hit_monsters = pygame.sprite.spritecollide(missile, monsters, False)
+            for monster in hit_monsters:
+                monster.health -= missile.damage
+                print(f"Magic missile hit {monster.__class__.__name__} for {missile.damage} damage")
+                if monster.health <= 0:
+                    self.remove_monster(monster)
+                missile.kill()
+                break
+
     def player_attack(self):
         if self.current_scene == "village":
             monsters = self.village.monsters
@@ -127,15 +160,29 @@ class Game:
         
         for monster in list(monsters):  # Create a copy of the list to safely remove items
             if monster.health <= 0:
-                monsters.remove(monster)
-                dropped_coin = monster.drop_coin()
-                if dropped_coin:
-                    coins.add(dropped_coin)
-                    print(f"Coin dropped at position: {dropped_coin.rect.center}")  # Debug print
-                else:
-                    print("Monster defeated but no coin dropped")  # Debug print
+                self.remove_monster(monster)
         
         print(f"Current number of coins in scene: {len(coins)}")  # Debug print
+
+    def remove_monster(self, monster):
+        if self.current_scene == "village":
+            monsters = self.village.monsters
+            coins = self.village.coins
+        elif self.current_scene == "mansion":
+            monsters = self.mansion_scene.monsters
+            coins = self.mansion_scene.coins
+        else:
+            monsters = self.indoor_scenes[self.current_building].monsters
+            coins = self.indoor_scenes[self.current_building].coins
+
+        monsters.remove(monster)
+        dropped_coin = monster.drop_coin()
+        if dropped_coin:
+            coins.add(dropped_coin)
+            print(f"Coin dropped at position: {dropped_coin.rect.center}")  # Debug print
+        else:
+            print("Monster defeated but no coin dropped")  # Debug print
+        print(f"Monster removed. Remaining monsters: {len(monsters)}")  # Debug print
 
     def update_camera(self):
         self.camera_x = max(0, min(self.player.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
@@ -214,6 +261,15 @@ class Game:
                 effect_screen_y = effect.rect.y
             self.screen.blit(effect.image, (effect_screen_x, effect_screen_y))
 
+        for missile in self.magic_missiles:
+            if self.current_scene == "village":
+                missile_screen_x = missile.rect.x - self.camera_x
+                missile_screen_y = missile.rect.y - self.camera_y
+            else:
+                missile_screen_x = missile.rect.x
+                missile_screen_y = missile.rect.y
+            self.screen.blit(missile.image, (missile_screen_x, missile_screen_y))
+
         if self.near_entrance:
             text = font.render("Press SPACE to enter/exit", True, YELLOW)
             self.screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 20))
@@ -251,6 +307,7 @@ class Game:
             "Game Instructions:",
             "- Use arrow keys to move",
             "- Left-click to move to pointer",
+            "- Right-click to fire magic missile",
             "- Press SPACE near green rectangles to enter/exit buildings",
             "- Press ENTER to attack nearby monsters",
             "- Collect coins dropped by defeated monsters",

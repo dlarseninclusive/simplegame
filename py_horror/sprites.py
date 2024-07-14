@@ -27,11 +27,14 @@ zombie_sprite = load_sprite('zombie.png', placeholder_color=(0, 0, 255))
 tracker_sprite = load_sprite('tracker.png', placeholder_color=(255, 0, 255))
 bat_sprite = load_sprite('bat.png', placeholder_color=(255, 255, 0))
 boss_sprite = load_sprite('boss.png', 0.2, placeholder_color=(255, 0, 0), placeholder_size=(64, 64))
-coin_sprite = load_sprite('coin.png', placeholder_color=(255, 215, 0))
+coin_sprite = load_sprite('coin.png',0.05, placeholder_color=(255, 215, 0))
 house_sprites = [load_sprite('house.png', placeholder_color=(139, 69, 19), placeholder_size=(100, 100)) for _ in range(4)]
 mansion_sprite = load_sprite('mansion.png', 0.3, placeholder_color=(70, 130, 180), placeholder_size=(150, 150))
 dirt_road_sprite = load_sprite('dirt_road.png', 0.5, placeholder_color=(101, 67, 33), placeholder_size=(50, 50))
 grass_sprite = load_sprite('grass.png', 0.5, placeholder_color=(34, 139, 34), placeholder_size=(50, 50))
+
+# Create magic missile sprite
+magic_missile_sprite = create_placeholder_sprite((0, 255, 255), 16, 16)  # Cyan color, 16x16 pixels
 
 # Create furniture sprites using Pygame's drawing functions
 def create_furniture_sprite(color, width, height):
