@@ -30,7 +30,7 @@ boss_sprite = load_sprite('boss.png', 0.2, placeholder_color=(255, 0, 0), placeh
 coin_sprite = load_sprite('coin.png', scale=0.025, placeholder_color=(255, 215, 0), placeholder_size=(8, 8))
 house_sprites = [load_sprite(f'house{i}.png', scale=0.15, placeholder_color=(139, 69, 19), placeholder_size=(100, 100)) for i in range(1, 6)]
 mansion_sprite = load_sprite('mansion.png', 0.3, placeholder_color=(70, 130, 180), placeholder_size=(150, 150))
-dirt_road_sprite = load_sprite('dirt_road.png', 0.5, placeholder_color=(101, 67, 33), placeholder_size=(50, 50))
+dirt_road_sprite = load_sprite('dirt_road.png', 0.2, placeholder_color=(101, 67, 33), placeholder_size=(50, 50))
 grass_sprite = load_sprite('grass.png', 0.5, placeholder_color=(34, 139, 34), placeholder_size=(50, 50))
 
 # Create magic missile sprite

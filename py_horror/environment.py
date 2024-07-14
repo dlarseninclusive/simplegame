@@ -16,12 +16,10 @@ class Village:
     def setup_village(self):
         # Create horizontal and vertical roads
         road_width = 100
-        self.vertical_road = pygame.Surface((road_width, MAP_HEIGHT))
-        self.vertical_road.fill(BROWN)
+        self.vertical_road = self.create_textured_road(road_width, MAP_HEIGHT)
         self.vertical_road_rect = self.vertical_road.get_rect(center=(MAP_WIDTH // 2, MAP_HEIGHT // 2))
 
-        self.horizontal_road = pygame.Surface((MAP_WIDTH, road_width))
-        self.horizontal_road.fill(BROWN)
+        self.horizontal_road = self.create_textured_road(MAP_WIDTH, road_width)
         self.horizontal_road_rect = self.horizontal_road.get_rect(center=(MAP_WIDTH // 2, MAP_HEIGHT // 2))
 
         # Define building positions
@@ -48,6 +46,16 @@ class Village:
         mansion_pos = (MAP_WIDTH // 2 - mansion_sprite.get_width() // 2, 50)
         self.mansion = Building(mansion_pos, mansion_sprite, facing_south=True)
         self.buildings.add(self.mansion)
+
+    def create_textured_road(self, width, height):
+        road_surface = pygame.Surface((width, height))
+        tile_width, tile_height = dirt_road_sprite.get_width(), dirt_road_sprite.get_height()
+        
+        for y in range(0, height, tile_height):
+            for x in range(0, width, tile_width):
+                road_surface.blit(dirt_road_sprite, (x, y))
+        
+        return road_surface
 
     def create_monster(self, monster_type, x, y):
         if monster_type == "zombie":
@@ -84,6 +92,8 @@ class Village:
 
         for coin in self.coins:
             screen.blit(coin.image, (coin.rect.x - camera_x, coin.rect.y - camera_y))
+
+# ... (rest of the file remains the same)
 
 class IndoorScene:
     def __init__(self, building):
