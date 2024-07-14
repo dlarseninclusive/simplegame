@@ -2,7 +2,7 @@ import pygame
 import random
 from constants import *
 from game_objects import Building, Monster, BossMonster
-from sprites import house_sprites, mansion_sprite, zombie_sprite, tracker_sprite, bat_sprite, dirt_road_sprite, grass_sprite, furniture_sprites
+from sprites import house_sprites, mansion_sprite, zombie_sprite, tracker_sprite, bat_sprite, dirt_road_sprite, grass_sprite, furniture_sprites, floor_sprite
 
 class Village:
     def __init__(self):
@@ -93,15 +93,24 @@ class Village:
         for coin in self.coins:
             screen.blit(coin.image, (coin.rect.x - camera_x, coin.rect.y - camera_y))
 
-# ... (rest of the file remains the same)
-
 class IndoorScene:
     def __init__(self, building):
         self.building = building
         self.monsters = pygame.sprite.Group()
         self.coins = pygame.sprite.Group()
         self.furniture = pygame.sprite.Group()
+        self.floor_surface = self.create_floor_surface()
         self.setup_room()
+
+    def create_floor_surface(self):
+        floor_surface = pygame.Surface((WIDTH, HEIGHT))
+        tile_width, tile_height = floor_sprite.get_width(), floor_sprite.get_height()
+        
+        for y in range(0, HEIGHT, tile_height):
+            for x in range(0, WIDTH, tile_width):
+                floor_surface.blit(floor_sprite, (x, y))
+        
+        return floor_surface
 
     def setup_room(self):
         room_width, room_height = WIDTH, HEIGHT
@@ -141,7 +150,7 @@ class IndoorScene:
         self.coins.update()
 
     def draw(self, screen, camera_x, camera_y):
-        screen.fill(BROWN)  # Fill with a brown color to represent wooden floor
+        screen.blit(self.floor_surface, (0, 0))  # Draw the floor texture
         
         # Draw furniture
         for furniture in self.furniture:
