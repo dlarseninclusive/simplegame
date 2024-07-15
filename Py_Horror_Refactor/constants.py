@@ -1,0 +1,25 @@
+import pygame
+
+# Game constants
+WIDTH, HEIGHT = 1280, 720
+FPS = 60
+
+# Map size
+MAP_WIDTH, MAP_HEIGHT = 1920, 1080
+
+# Colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)
+BROWN = (165, 42, 42)
+DARK_BROWN = (101, 67, 33)
+GRAY = (128, 128, 128)
+DARK_GREEN = (0, 100, 0)
+
+# Initialize pygame font
+pygame.font.init()
+font = pygame.font.Font(None, 36)
+small_font = pygame.font.Font(None, 24)
