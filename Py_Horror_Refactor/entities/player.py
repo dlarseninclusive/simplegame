@@ -3,21 +3,37 @@ import math
 from constants import *
 from entities.base_entity import Entity
 from utils.sprite_loader import player_sprite
-from entities.magic_missile import MagicMissile
 
 class Player(Entity):
     def __init__(self):
         super().__init__(MAP_WIDTH // 2, MAP_HEIGHT // 2, player_sprite, 3, 100)
-        self.coins = 0
-        self.facing_right = True
-        self.attack_cooldown = 0
-        self.magic_missile_cooldown = 0
         self.camera_x = 0
         self.camera_y = 0
+        self.coins = 0
+        self.target_pos = None
+
+    def set_target(self, pos):
+        self.target_pos = pos
 
     def move(self, dx, dy, buildings):
-        new_x = self.rect.x + dx * self.speed
-        new_y = self.rect.y + dy * self.speed
+        if self.target_pos:
+            # Mouse movement
+            target_dx = self.target_pos[0] - self.rect.centerx
+            target_dy = self.target_pos[1] - self.rect.centery
+            distance = math.hypot(target_dx, target_dy)
+            if distance < self.speed:
+                self.rect.center = self.target_pos
+                self.target_pos = None
+            else:
+                dx = (target_dx / distance) * self.speed
+                dy = (target_dy / distance) * self.speed
+        else:
+            # Keyboard movement
+            dx *= self.speed
+            dy *= self.speed
+
+        new_x = self.rect.x + dx
+        new_y = self.rect.y + dy
 
         new_x = max(0, min(new_x, MAP_WIDTH - self.rect.width))
         new_y = max(0, min(new_y, MAP_HEIGHT - self.rect.height))
@@ -44,27 +60,9 @@ class Player(Entity):
         self.camera_x = max(0, min(self.rect.centerx - WIDTH // 2, MAP_WIDTH - WIDTH))
         self.camera_y = max(0, min(self.rect.centery - HEIGHT // 2, MAP_HEIGHT - HEIGHT))
 
-    def attack(self, monsters):
-        if self.attack_cooldown == 0:
-            for monster in monsters:
-                if self.rect.colliderect(monster.rect):
-                    monster.health -= 20  # Attack damage
-                    print(f"Attacked {monster.__class__.__name__} for 20 damage")
-            self.attack_cooldown = 30
-        else:
-            self.attack_cooldown -= 1
-
-    def fire_magic_missile(self, target_pos):
-        if self.magic_missile_cooldown == 0:
-            self.magic_missile_cooldown = 60  # 1 second cooldown at 60 FPS
-            return MagicMissile(self.rect.center, target_pos)
-        return None
-
-    def update(self):
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= 1
-        if self.magic_missile_cooldown > 0:
-            self.magic_missile_cooldown -= 1
+    def collect_coin(self, coin):
+        self.coins += 1
+        coin.kill()
 
     def draw(self, surface):
         surface.blit(self.image, (self.rect.x - self.camera_x, self.rect.y - self.camera_y))

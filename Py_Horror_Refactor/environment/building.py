@@ -14,3 +14,9 @@ class Building(pygame.sprite.Sprite):
 
     def collide_with_player(self, player_rect):
         return self.rect.colliderect(player_rect) and not self.entrance.colliderect(player_rect)
+        
+class MansionBuilding(Building):
+    def __init__(self, pos, sprite):
+        super().__init__(pos, sprite)
+        # Add any mansion-specific attributes or methods here
+

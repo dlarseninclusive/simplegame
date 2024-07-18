@@ -6,9 +6,6 @@ def main():
     print(f"Pygame initialized. Display driver: {pygame.display.get_driver()}")
     print(f"Pygame version: {pygame.version.ver}")
     
-    # Force software rendering if hardware rendering is causing issues
-    # os.environ["SDL_VIDEODRIVER"] = "software"
-    
     game = Game()
     game.run()
 

@@ -3,7 +3,8 @@ import random
 from constants import *
 from entities.monsters import Monster
 from environment.building import Building
-from utils.sprite_loader import house_sprites, grass_sprite, dirt_road_sprite, zombie_sprite, tracker_sprite, bat_sprite
+from utils.sprite_loader import house_sprites, grass_sprite, zombie_sprite, tracker_sprite, bat_sprite
+from entities.coin import Coin
 
 class Village:
     def __init__(self):
@@ -39,6 +40,11 @@ class Village:
 
     def update(self, player):
         self.monsters.update(player)
+        for monster in list(self.monsters):
+            if monster.health <= 0:
+                monster.kill()
+                if random.random() < 0.5:  # 50% chance to drop a coin
+                    self.coins.add(Coin(monster.rect.centerx, monster.rect.centery))
         self.coins.update()
 
     def draw(self, screen, camera_x, camera_y):
