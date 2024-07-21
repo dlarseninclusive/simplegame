@@ -1,5 +1,6 @@
 import pygame
 import math
+from constants import *
 from utils.sprite_loader import magic_missile_sprite
 
 class MagicMissile(pygame.sprite.Sprite):
@@ -18,5 +19,5 @@ class MagicMissile(pygame.sprite.Sprite):
         self.rect.y += self.velocity.y
 
         # Remove the missile if it goes off-screen
-        if not pygame.Rect(0, 0, MAP_WIDTH, MAP_HEIGHT).colliderect(self.rect):
+        if not pygame.Rect(0, 0, WIDTH, HEIGHT).colliderect(self.rect):
             self.kill()

@@ -6,8 +6,8 @@ class Building(pygame.sprite.Sprite):
         self.image = sprite
         self.rect = self.image.get_rect()
         self.rect.topleft = pos
-        entrance_width = 50
-        entrance_height = 12
+        entrance_width = 100  # Increased from 50 to 100
+        entrance_height = 20  # Increased from 12 to 20
         self.entrance = pygame.Rect(self.rect.centerx - entrance_width // 2, 
                                     self.rect.bottom - entrance_height, 
                                     entrance_width, entrance_height)
@@ -19,4 +19,3 @@ class MansionBuilding(Building):
     def __init__(self, pos, sprite):
         super().__init__(pos, sprite)
         # Add any mansion-specific attributes or methods here
-

@@ -34,3 +34,13 @@ class HUD:
         for i, instruction in enumerate(instructions):
             text = self.small_font.render(instruction, True, WHITE)
             surface.blit(text, (10, HEIGHT - 100 + i * 20))
+  
+
+    def draw(self, surface, player, current_scene):
+        self.draw_health_bar(surface, player.health, player.max_health)
+        self.draw_coin_counter(surface, player.coins)
+        self.draw_current_scene(surface, current_scene)
+
+    def draw_current_scene(self, surface, current_scene):
+        scene_text = self.font.render(f"Current Scene: {current_scene.capitalize()}", True, WHITE)
+        surface.blit(scene_text, (10, 70))
