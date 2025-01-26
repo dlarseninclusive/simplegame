@@ -1,0 +1,45 @@
+# File: config.py
+
+# Screen settings
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+FPS = 60
+
+# Colors (R, G, B)
+WHITE = (255, 255, 255)
+BLACK = (0,   0,   0)
+RED   = (255, 0,   0)
+GREEN = (0,   255, 0)
+BLUE  = (0,   0,   255)
+
+# Player
+PLAYER_SPEED = 4
+
+# Base
+BASE_MAX_HEALTH = 1000
+BASE_RADIUS = 40
+BASE_POSITION = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+
+# Turret
+TURRET_COST = 50
+TURRET_MAX_HEALTH = 100
+TURRET_RANGE = 150
+TURRET_FIRE_RATE = 30
+TURRET_BULLET_SPEED = 5
+TURRET_BULLET_DAMAGE = 10
+
+# Enemy
+ENEMY_SPEED = 1
+ENEMY_HEALTH = 50
+ENEMY_DAMAGE = 5
+
+# Wave
+WAVE_INTERVAL = 300       # ~5 seconds at 60 FPS
+ENEMIES_PER_WAVE = 5
+
+# Resources
+STARTING_RESOURCES = 100
+ENEMY_KILL_REWARD = 25
+
+# Tile-based background
+TILE_SIZE = 32
