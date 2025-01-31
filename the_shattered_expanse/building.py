@@ -122,7 +122,40 @@ class BuildingSystem:
         pressed = pygame.key.get_pressed()
         
         # Structure selection with number keys - using get_pressed() for continuous state
+        structure_type = None
+        cost = None
+        size = (40, 40)  # default size
+
         if pressed[pygame.K_1]:  # Basic wall
+            structure_type = "Wall"
+            cost = self.basic_wall_cost
+        elif pressed[pygame.K_2]:  # Advanced turret
+            structure_type = "Advanced Turret"
+            cost = self.advanced_turret_cost
+        elif pressed[pygame.K_3]:  # Storage
+            structure_type = "Storage"
+            cost = self.storage_cost
+            size = (60, 60)
+        elif pressed[pygame.K_4]:  # Workshop
+            structure_type = "Workshop"
+            cost = self.workshop_cost
+            size = (80, 80)
+        elif pressed[pygame.K_5]:  # Resource Collector
+            structure_type = "Collector"
+            cost = self.collector_cost
+        elif pressed[pygame.K_6]:  # Generator
+            structure_type = "Generator"
+            cost = self.generator_cost
+            size = (50, 50)
+
+        if structure_type and cost:
+            print(f"Attempting to place {structure_type}")
+            if self.check_resources(player, cost):
+                if self.place_structure(structure_type, size[0], size[1], world_x, world_y, environment):
+                    self.deduct_resources(player, cost)
+                    print(f"Successfully placed {structure_type}")
+            else:
+                print(f"Not enough resources for {structure_type}. Need: {cost}")
             print("Attempting to place Wall")
             if self.check_resources(player, self.basic_wall_cost):
                 self.place_structure("Wall", 40, 40, world_x, world_y, environment)

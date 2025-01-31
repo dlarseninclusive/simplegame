@@ -117,16 +117,20 @@ def main():
                 wx = mx + camera.offset_x
                 wy = my + camera.offset_y
                 
-                # Handle placement on click
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    building_system.attempt_placement(player, environment, wx, wy)
-                    
-                # Handle structure upgrades and repairs
-                if event.type == pygame.KEYDOWN:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left click
+                        building_system.attempt_placement(player, environment, wx, wy)
+                    elif event.button == 3:  # Right click
+                        building_system.attempt_reclaim(player, environment)
+                        
+                elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_u:  # Upgrade
                         building_system.attempt_upgrade(player, wx, wy)
                     elif event.key == pygame.K_h:  # Repair
                         building_system.attempt_repair(player, wx, wy)
+                
+                # Update building system
+                building_system.update_structures(dt, player)
 
         if not show_menu:
             keys = pygame.key.get_pressed()
