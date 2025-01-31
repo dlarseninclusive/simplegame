@@ -85,12 +85,28 @@ class Player:
         # Thirst & Hunger drain (reduced rates)
         self.thirst -= 1 * dt  # Was 5
         self.hunger -= 0.5 * dt  # Was 3
-        if self.thirst < 0:
-            self.thirst = 0
+        
+        # Use stockpiled resources when primary supply runs out
+        if self.thirst <= 0 and self.inventory.get('water', 0) > 0:
+            water_to_use = min(self.inventory['water'], 10)  # Use up to 10 water at a time
+            self.inventory['water'] -= water_to_use
+            self.thirst += water_to_use * 10  # Each water restores 10 thirst
+        
+        if self.hunger <= 0 and self.inventory.get('food', 0) > 0:
+            food_to_use = min(self.inventory['food'], 5)  # Use up to 5 food at a time
+            self.inventory['food'] -= food_to_use
+            self.hunger += food_to_use * 20  # Each food restores 20 hunger
+        
+        # Health damage if resources are completely depleted
+        if self.thirst <= 0:
             self.health -= 2 * dt
-        if self.hunger < 0:
-            self.hunger = 0
+        
+        if self.hunger <= 0:
             self.health -= 1 * dt
+        
+        # Ensure thirst and hunger don't go negative
+        self.thirst = max(0, self.thirst)
+        self.hunger = max(0, self.hunger)
 
         # Heat stroke around midday
         if abs(day_cycle - heat_stroke_threshold) < 1.0:
