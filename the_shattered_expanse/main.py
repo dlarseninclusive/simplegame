@@ -259,7 +259,23 @@ def main():
                                           (s1x, s1y), (s2x, s2y), 1)
             
             # Building placement preview
-            pygame.draw.rect(screen, (255, 255, 0), (mx-20, my-20, 40, 40), 2)  # Yellow outline
+            preview_size = (40, 40)  # default size
+            if pygame.key.get_pressed()[pygame.K_1]: 
+                preview_size = (40, 40)  # Wall
+            elif pygame.key.get_pressed()[pygame.K_2]:
+                preview_size = (40, 40)  # Turret
+            elif pygame.key.get_pressed()[pygame.K_3]:
+                preview_size = (60, 60)  # Storage
+            elif pygame.key.get_pressed()[pygame.K_4]:
+                preview_size = (80, 80)  # Workshop
+            elif pygame.key.get_pressed()[pygame.K_5]:
+                preview_size = (40, 40)  # Collector
+            elif pygame.key.get_pressed()[pygame.K_6]:
+                preview_size = (50, 50)  # Generator
+                
+            pygame.draw.rect(screen, (255, 255, 0), 
+                           (mx - preview_size[0]//2, my - preview_size[1]//2, 
+                            preview_size[0], preview_size[1]), 2)
             # Display current structure type
             if pygame.key.get_pressed()[pygame.K_1]: text = "Wall"
             elif pygame.key.get_pressed()[pygame.K_2]: text = "Turret"

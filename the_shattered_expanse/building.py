@@ -114,9 +114,40 @@ class BuildingSystem:
         self.next_grid_id = 0
 
     def attempt_placement(self, player, environment, world_x, world_y):
+        # Get structure size first
+        size = (40, 40)  # default size
+        structure_type = None
+        cost = None
+        
+        pressed = pygame.key.get_pressed()
+        if pressed[pygame.K_1]:
+            structure_type = "Wall"
+            cost = self.basic_wall_cost
+            size = (40, 40)
+        elif pressed[pygame.K_2]:
+            structure_type = "Advanced Turret"
+            cost = self.advanced_turret_cost
+            size = (40, 40)
+        elif pressed[pygame.K_3]:
+            structure_type = "Storage"
+            cost = self.storage_cost
+            size = (60, 60)
+        elif pressed[pygame.K_4]:
+            structure_type = "Workshop"
+            cost = self.workshop_cost
+            size = (80, 80)
+        elif pressed[pygame.K_5]:
+            structure_type = "Collector"
+            cost = self.collector_cost
+            size = (40, 40)
+        elif pressed[pygame.K_6]:
+            structure_type = "Generator"
+            cost = self.generator_cost
+            size = (50, 50)
+            
         # Adjust position to center the structure on the mouse
-        world_x -= 20  # Half of default width
-        world_y -= 20  # Half of default height
+        world_x -= size[0] // 2
+        world_y -= size[1] // 2
         
         # Debug output
         print(f"\nAttempting placement at ({world_x}, {world_y})")
@@ -125,32 +156,6 @@ class BuildingSystem:
         # Get the current key states
         pressed = pygame.key.get_pressed()
         
-        # Structure selection with number keys - using get_pressed() for continuous state
-        structure_type = None
-        cost = None
-        size = (40, 40)  # default size
-
-        if pressed[pygame.K_1]:  # Basic wall
-            structure_type = "Wall"
-            cost = self.basic_wall_cost
-        elif pressed[pygame.K_2]:  # Advanced turret
-            structure_type = "Advanced Turret"
-            cost = self.advanced_turret_cost
-        elif pressed[pygame.K_3]:  # Storage
-            structure_type = "Storage"
-            cost = self.storage_cost
-            size = (60, 60)
-        elif pressed[pygame.K_4]:  # Workshop
-            structure_type = "Workshop"
-            cost = self.workshop_cost
-            size = (80, 80)
-        elif pressed[pygame.K_5]:  # Resource Collector
-            structure_type = "Collector"
-            cost = self.collector_cost
-        elif pressed[pygame.K_6]:  # Generator
-            structure_type = "Generator"
-            cost = self.generator_cost
-            size = (50, 50)
 
         if structure_type and cost:
             print(f"Attempting to place {structure_type}")

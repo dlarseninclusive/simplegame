@@ -56,7 +56,7 @@ class UIManager:
 
         # Build mode
         if build_mode:
-            build_surf = self.font.render("BUILD MODE (Shift=Turret)", True, (255,255,0))
+            build_surf = self.font.render("BUILD MODE (1=Wall, 2=Turret, 3=Storage, 4=Workshop, 5=Collector, 6=Generator)", True, (255,255,0))
             screen.blit(build_surf, (x_offset, y_offset+65))
 
         # Show time-of-day
