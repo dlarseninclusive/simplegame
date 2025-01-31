@@ -196,41 +196,44 @@ class BuildingSystem:
     def attempt_reclaim(self, player, environment):
         """
         If the player overlaps any structure, remove it and refund resources.
-        Simple approach: refund half the cost, or 1:1 if you prefer.
+        Improved to check player's entire rect for overlap.
         """
         reclaimed_list = []
-        px, py = player.rect.centerx, player.rect.centery
 
-        # We'll check which structure's rect overlaps the player's center
+        # Check which structure's rect overlaps the player's rect
         for s in self.structures:
             srect = pygame.Rect(s.x, s.y, s.width, s.height)
-            if srect.collidepoint(px, py):
+            if srect.colliderect(player.rect):
                 # Found a structure we can reclaim
                 reclaimed_list.append(s)
 
         for s in reclaimed_list:
+            # Remove from structures list
             self.structures.remove(s)
-            srect = pygame.Rect(s.x, s.y, s.width, s.height)
-            if srect in environment.obstacles:
-                environment.obstacles.remove(srect)
+            
+            # Remove from environment obstacles
+            obs_rect = pygame.Rect(s.x, s.y, s.width, s.height)
+            if obs_rect in environment.obstacles:
+                environment.obstacles.remove(obs_rect)
 
-            # Refund resources based on structure type
-            if s.structure_type == "Wall":
-                cost = self.basic_wall_cost
-            elif s.structure_type == "Advanced Turret":
-                cost = self.advanced_turret_cost
-            elif s.structure_type == "Storage":
-                cost = self.storage_cost
-            elif s.structure_type == "Workshop":
-                cost = self.workshop_cost
-            elif s.structure_type == "Collector":
-                cost = self.collector_cost
-            elif s.structure_type == "Generator":
-                cost = self.generator_cost
+            # Determine cost based on structure type
+            cost_map = {
+                "Wall": self.basic_wall_cost,
+                "Advanced Turret": self.advanced_turret_cost,
+                "Storage": self.storage_cost,
+                "Workshop": self.workshop_cost,
+                "Collector": self.collector_cost,
+                "Generator": self.generator_cost
+            }
 
-            # For simplicity, give 100% back. Or use 50% if you want partial.
+            # Get the cost, defaulting to an empty dict if not found
+            cost = cost_map.get(s.structure_type, {})
+
+            # Refund resources (full refund)
             for rtype, amt in cost.items():
-                player.inventory[rtype] += amt
+                player.inventory[rtype] = player.inventory.get(rtype, 0) + amt
+
+            print(f"Reclaimed {s.structure_type} structure")
 
     def place_structure(self, structure_type, w, h, x, y, environment):
         print(f"Placing {structure_type} at ({x}, {y})")
