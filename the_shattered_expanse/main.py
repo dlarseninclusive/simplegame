@@ -63,11 +63,13 @@ def main():
         target_count=5
     )
 
-    # NPCs with more advanced AI
+    # NPCs with more advanced AI and different types
     npcs = [
-        NPC(500, 200, faction="Automatons", group_id=1),
-        NPC(1200, 600, faction="Scavengers", group_id=2),
-        NPC(1500, 1300, faction="Scavengers", group_id=2),
+        NPC(500, 200, faction="Automatons", group_id=1, enemy_type="scout"),
+        NPC(1200, 600, faction="Scavengers", group_id=2, enemy_type="warrior"),
+        NPC(1500, 1300, faction="Scavengers", group_id=2, enemy_type="heavy"),
+        NPC(800, 800, faction="Automatons", group_id=1, enemy_type="ranged"),
+        NPC(2000, 2000, faction="Automatons", group_id=3, enemy_type="boss"),
     ]
 
     building_system = BuildingSystem()
@@ -228,16 +230,25 @@ def main():
                 level_text = font.render(f"L{bld.level}", True, (255, 255, 255))
                 screen.blit(level_text, (bx + bld.width - 20, by + bld.height - 20))
 
-        # NPCs
+        # NPCs with health bars
         for npc in npcs:
             nx = npc.rect.x - camera.offset_x
             ny = npc.rect.y - camera.offset_y
-            pygame.draw.rect(screen, (100, 100, 100), (nx, ny, npc.rect.width, npc.rect.height))
+            
+            # Draw the sprite
+            screen.blit(npc.sprite, (nx, ny))
+            
+            # Health bar
+            health_percent = npc.health / npc.max_health
+            health_width = npc.width * health_percent
+            health_color = (int(255 * (1 - health_percent)), int(255 * health_percent), 0)
+            pygame.draw.rect(screen, health_color, (nx, ny - 5, health_width, 3))
 
-        # Player
+        # Player with sprite
         px = player.rect.x - camera.offset_x
         py = player.rect.y - camera.offset_y
-        pygame.draw.rect(screen, (178, 34, 34), (px, py, player.rect.width, player.rect.height))
+        player_sprite = create_player_sprite()
+        screen.blit(player_sprite, (px, py))
         
         # Build mode cursor and power grid visualization
         if build_mode:

@@ -8,10 +8,13 @@ class NPC:
     Basic NPC that can wander, chase the player if hostile,
     or use pathfinding. Group ID can allow group behavior.
     """
-    def __init__(self, x, y, faction="Scavengers", group_id=None):
-        self.width = 32
-        self.height = 32
-        self.speed = 100
+    def __init__(self, x, y, faction="Scavengers", group_id=None, enemy_type="warrior"):
+        self.enemy_type = enemy_type
+        stats = ENEMY_STATS[enemy_type]
+        
+        self.width = stats["size"]
+        self.height = stats["size"]
+        self.speed = stats["speed"]
         self.rect = pygame.Rect(x, y, self.width, self.height)
         self.faction = faction
         self.hostile = True
@@ -21,8 +24,13 @@ class NPC:
         self.vx = 0
         self.vy = 0
 
-        # Add health so NPC can be attacked
-        self.health = 100
+        # Use enemy stats for health
+        self.health = stats["health"]
+        self.max_health = stats["health"]
+        self.damage = stats["damage"]
+        
+        # Create sprite
+        self.sprite = create_enemy_sprite(enemy_type)
 
         # For pathfinding
         self.path = []            # list of (gx, gy) cells from A* 
