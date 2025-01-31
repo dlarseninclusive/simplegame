@@ -54,11 +54,11 @@ class AttackAnimation:
         self.duration = 0.2  # seconds
         
         # Calculate swing arc points
-        dx = end_pos[0] - start_pos[0]
-        dy = end_pos[1] - start_pos[1]
+        dx = self.end_pos[0] - self.start_pos[0]
+        dy = self.end_pos[1] - self.start_pos[1]
         self.mid_point = (
-            start_pos[0] + dx * 0.5 - dy * 0.2,
-            start_pos[1] + dy * 0.5 + dx * 0.2
+            self.start_pos[0] + dx * 0.5 - dy * 0.2,
+            self.start_pos[1] + dy * 0.5 + dx * 0.2
         )
     
     def update(self, dt):

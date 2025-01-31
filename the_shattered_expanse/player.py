@@ -1,5 +1,6 @@
 import pygame
 from resource import RESOURCE_DATA
+from combat_effects import DamageNumber, HitFlash, AttackAnimation
 
 class Player:
     """
