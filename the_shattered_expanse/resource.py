@@ -1,29 +1,5 @@
 import pygame
-
-RESOURCE_DATA = {
-    "scrap": {
-        "display_name": "Scrap Metal",
-        "value": 1,
-        "description": "Rusted metal bits for forging or trading."
-    },
-    "water": {
-        "display_name": "Fresh Water",
-        "value": 2,
-        "thirst_recovery": 30,
-        "description": "Essential for survival."
-    },
-    "food": {
-        "display_name": "Dried Rations",
-        "value": 3,
-        "hunger_recovery": 20,
-        "description": "Basic sustenance."
-    },
-    "artifact": {
-        "display_name": "Ancient Artifact",
-        "value": 10,
-        "description": "Relic from the Architects."
-    }
-}
+from .data import get_resource_data
 
 class ResourceNode:
     """
@@ -40,7 +16,7 @@ class ResourceNode:
 
     @property
     def data(self):
-        return RESOURCE_DATA.get(self.resource_type, {})
+        return get_resource_data(self.resource_type)
 
     def update(self, dt):
         """
