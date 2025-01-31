@@ -1,10 +1,11 @@
 import pygame
 import random
+import math
 
 class CityGenerator:
     """
     Generates detailed city structures for different factions.
-    Provides methods to create city buildings, territories, and visual representations.
+    Provides methods to create city buildings, territories, roads, and visual representations.
     """
     def __init__(self, world_width=4000, world_height=4000):
         self.world_width = world_width
@@ -28,6 +29,10 @@ class CityGenerator:
                 "size_range": (50, 90)
             }
         }
+        
+        # Road configuration
+        self.road_color = (100, 100, 100)  # Gray roads
+        self.road_width = 20
 
     def generate_city_buildings(self, faction_name):
         """
@@ -111,3 +116,62 @@ class CityGenerator:
             territories[faction] = territory
         
         return territories
+
+    def generate_inter_city_roads(self, factions_data):
+        """
+        Generate roads connecting different faction cities.
+        
+        :param factions_data: Dictionary of faction data from Factions class
+        :return: List of road segments
+        """
+        roads = []
+        city_locations = [
+            data['city']['location'] for data in factions_data.values()
+        ]
+        
+        # Connect all cities with roads
+        for i in range(len(city_locations)):
+            for j in range(i+1, len(city_locations)):
+                start = city_locations[i]
+                end = city_locations[j]
+                roads.append((start, end))
+        
+        return roads
+
+    def generate_city_internal_roads(self, faction_name, buildings):
+        """
+        Generate internal roads within a city connecting buildings.
+        
+        :param faction_name: Name of the faction
+        :param buildings: Sprite group of buildings in the city
+        :return: List of road segments
+        """
+        roads = []
+        building_list = list(buildings)
+        
+        # Connect buildings with roads
+        for i in range(len(building_list)):
+            for j in range(i+1, len(building_list)):
+                b1, b2 = building_list[i], building_list[j]
+                roads.append((b1.rect.center, b2.rect.center))
+        
+        return roads
+
+    def draw_roads(self, screen, roads, camera_offset):
+        """
+        Draw roads on the screen.
+        
+        :param screen: Pygame screen surface
+        :param roads: List of road segments
+        :param camera_offset: Camera offset for world rendering
+        """
+        for start, end in roads:
+            start_x = start[0] - camera_offset[0]
+            start_y = start[1] - camera_offset[1]
+            end_x = end[0] - camera_offset[0]
+            end_y = end[1] - camera_offset[1]
+            
+            pygame.draw.line(screen, self.road_color, 
+                             (start_x, start_y), 
+                             (end_x, end_y), 
+                             self.road_width)
