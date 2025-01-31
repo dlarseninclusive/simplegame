@@ -114,13 +114,14 @@ class BuildingSystem:
         self.next_grid_id = 0
 
     def attempt_placement(self, player, environment, world_x, world_y):
-        pressed = pygame.key.get_pressed()
-        
         # Debug output
         print(f"\nAttempting placement at ({world_x}, {world_y})")
         print(f"Player inventory: {player.inventory}")
         
-        # Structure selection with number keys
+        # Get the current key states
+        pressed = pygame.key.get_pressed()
+        
+        # Structure selection with number keys - using get_pressed() for continuous state
         if pressed[pygame.K_1]:  # Basic wall
             print("Attempting to place Wall")
             if self.check_resources(player, self.basic_wall_cost):

@@ -110,13 +110,23 @@ def main():
                 if event.key == pygame.K_SPACE:
                     player.attempt_attack(npcs, dt)
 
-            # Build placement
-            if build_mode and event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    mx, my = event.pos
-                    wx = mx + camera.offset_x
-                    wy = my + camera.offset_y
+            # Building controls
+            if build_mode:
+                # Get current mouse position for preview/placement
+                mx, my = pygame.mouse.get_pos()
+                wx = mx + camera.offset_x
+                wy = my + camera.offset_y
+                
+                # Handle placement on click
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     building_system.attempt_placement(player, environment, wx, wy)
+                    
+                # Handle structure upgrades and repairs
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_u:  # Upgrade
+                        building_system.attempt_upgrade(player, wx, wy)
+                    elif event.key == pygame.K_h:  # Repair
+                        building_system.attempt_repair(player, wx, wy)
 
         if not show_menu:
             keys = pygame.key.get_pressed()
@@ -193,6 +203,22 @@ def main():
         px = player.rect.x - camera.offset_x
         py = player.rect.y - camera.offset_y
         pygame.draw.rect(screen, (178, 34, 34), (px, py, player.rect.width, player.rect.height))
+        
+        # Build mode cursor
+        if build_mode:
+            mx, my = pygame.mouse.get_pos()
+            pygame.draw.rect(screen, (255, 255, 0), (mx-20, my-20, 40, 40), 2)  # Yellow outline
+            # Display current structure type
+            if pygame.key.get_pressed()[pygame.K_1]: text = "Wall"
+            elif pygame.key.get_pressed()[pygame.K_2]: text = "Turret"
+            elif pygame.key.get_pressed()[pygame.K_3]: text = "Storage"
+            elif pygame.key.get_pressed()[pygame.K_4]: text = "Workshop"
+            elif pygame.key.get_pressed()[pygame.K_5]: text = "Collector"
+            elif pygame.key.get_pressed()[pygame.K_6]: text = "Generator"
+            else: text = "Select 1-6"
+            font = pygame.font.Font(None, 24)
+            text_surface = font.render(text, True, (255, 255, 0))
+            screen.blit(text_surface, (mx+25, my-10))
 
         ui_manager.draw_hud(screen, player, factions, build_mode, day_cycle)
         ui_manager.draw_minimap(screen, player, npcs, environment.obstacles, camera)
