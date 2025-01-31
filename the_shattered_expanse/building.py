@@ -116,16 +116,23 @@ class BuildingSystem:
     def attempt_placement(self, player, environment, world_x, world_y):
         pressed = pygame.key.get_pressed()
         
+        # Debug output of player's inventory
+        print(f"\nPlayer inventory: {player.inventory}")
+        
         # Structure selection with number keys
         if pressed[pygame.K_1]:  # Basic wall
             if self.check_resources(player, self.basic_wall_cost):
                 self.place_structure("Wall", 40, 40, world_x, world_y, environment)
                 self.deduct_resources(player, self.basic_wall_cost)
+            else:
+                print(f"Not enough resources for Wall. Need: {self.basic_wall_cost}")
                 
         elif pressed[pygame.K_2]:  # Advanced turret
             if self.check_resources(player, self.advanced_turret_cost):
                 self.place_structure("Advanced Turret", 40, 40, world_x, world_y, environment)
                 self.deduct_resources(player, self.advanced_turret_cost)
+            else:
+                print(f"Not enough resources for Advanced Turret. Need: {self.advanced_turret_cost}")
                 
         elif pressed[pygame.K_3]:  # Storage
             if self.check_resources(player, self.storage_cost):
