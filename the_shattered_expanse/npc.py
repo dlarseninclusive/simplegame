@@ -2,6 +2,7 @@
 
 import pygame
 import random
+from sprites import ENEMY_STATS, create_enemy_sprite
 
 class NPC:
     """

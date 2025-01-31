@@ -10,6 +10,7 @@ from factions import Factions
 from quests import QuestSystem
 from ui import UIManager, GameMenu
 from pathfinding import GridPathfinder
+from sprites import create_player_sprite
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
