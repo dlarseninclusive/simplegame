@@ -9,7 +9,8 @@ class NPC:
     Basic NPC that can wander, chase the player if hostile,
     or use pathfinding. Group ID can allow group behavior.
     """
-    def __init__(self, x, y, faction="Scavengers", group_id=None, enemy_type="warrior"):
+    def __init__(self, x, y, faction="Scavengers", group_id=None, enemy_type="warrior", spawn_region="south"):
+        self.spawn_region = spawn_region
         self.enemy_type = enemy_type
         stats = ENEMY_STATS[enemy_type]
         
