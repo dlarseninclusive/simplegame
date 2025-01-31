@@ -10,6 +10,15 @@ class UIManager:
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.font = pygame.font.SysFont(None, 20)
+        
+        # Separate status bar resources from inventory
+        self.status_resources = {
+            "scrap": 0,
+            "water": 0,
+            "food": 0,
+            "wood": 0,
+            "artifact": 0
+        }
 
     def draw_hud(self, screen, player, factions, build_mode, day_cycle):
         # Health/Thirst/Hunger bars
@@ -45,12 +54,19 @@ class UIManager:
             True, (255,255,255))
         screen.blit(rep_text, (x_offset, y_offset+35))
 
+        # Update status resources (could be tied to a method that player calls)
+        self.status_resources['scrap'] = min(player.inventory.get('scrap', 0), 50)
+        self.status_resources['water'] = min(player.inventory.get('water', 0), 10)
+        self.status_resources['food'] = min(player.inventory.get('food', 0), 10)
+        self.status_resources['wood'] = min(player.inventory.get('wood', 0), 20)
+        self.status_resources['artifact'] = min(player.inventory.get('artifact', 0), 5)
+
         # Resources
-        resource_text = (f"Scrap:{player.inventory['scrap']} "
-                         f"Water:{player.inventory['water']} "
-                         f"Food:{player.inventory['food']} "
-                         f"Wood:{player.inventory['wood']} "
-                         f"Artifact:{player.inventory['artifact']}")
+        resource_text = (f"Scrap:{self.status_resources['scrap']} "
+                         f"Water:{self.status_resources['water']} "
+                         f"Food:{self.status_resources['food']} "
+                         f"Wood:{self.status_resources['wood']} "
+                         f"Artifact:{self.status_resources['artifact']}")
         res_surf = self.font.render(resource_text, True, (255,255,255))
         screen.blit(res_surf, (x_offset, y_offset+50))
 
