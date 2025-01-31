@@ -1,4 +1,5 @@
 import pygame
+import math
 
 # Define colors for different enemy types
 ENEMY_COLORS = {
@@ -44,28 +45,38 @@ ENEMY_STATS = {
 }
 
 def create_player_sprite():
-    """Create a more detailed player sprite"""
-    size = 32
-    surface = pygame.Surface((size, size), pygame.SRCALPHA)
-    
-    # Main body (red)
-    pygame.draw.circle(surface, (178, 34, 34), (size//2, size//2), size//2)
-    
-    # Armor details (darker red)
-    pygame.draw.arc(surface, (139, 0, 0), (4, 4, size-8, size-8), 0, 3.14, 3)
-    pygame.draw.arc(surface, (139, 0, 0), (4, 4, size-8, size-8), 3.14, 6.28, 3)
-    
-    # Center highlight (lighter red)
-    pygame.draw.circle(surface, (205, 92, 92), (size//2, size//2), size//6)
-    
-    return surface
+    """Try to load player sprite, fall back to shape if file missing"""
+    try:
+        sprite = pygame.image.load("assets/player.png").convert_alpha()
+        return pygame.transform.scale(sprite, (32, 32))
+    except (pygame.error, FileNotFoundError):
+        # Fallback to drawn shape
+        size = 32
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        
+        # Main body (red)
+        pygame.draw.circle(surface, (178, 34, 34), (size//2, size//2), size//2)
+        
+        # Armor details (darker red)
+        pygame.draw.arc(surface, (139, 0, 0), (4, 4, size-8, size-8), 0, 3.14, 3)
+        pygame.draw.arc(surface, (139, 0, 0), (4, 4, size-8, size-8), 3.14, 6.28, 3)
+        
+        # Center highlight (lighter red)
+        pygame.draw.circle(surface, (205, 92, 92), (size//2, size//2), size//6)
+        
+        return surface
 
 def create_enemy_sprite(enemy_type):
-    """Create enemy sprite based on type"""
+    """Try to load enemy sprite, fall back to shape if file missing"""
     stats = ENEMY_STATS[enemy_type]
     size = stats["size"]
-    color = ENEMY_COLORS[enemy_type]
-    surface = pygame.Surface((size, size), pygame.SRCALPHA)
+    
+    try:
+        sprite = pygame.image.load(f"assets/{enemy_type}.png").convert_alpha()
+        return pygame.transform.scale(sprite, (size, size))
+    except (pygame.error, FileNotFoundError):
+        color = ENEMY_COLORS[enemy_type]
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
     
     if enemy_type == "scout":
         # Triangle shape for scouts
@@ -99,8 +110,8 @@ def create_enemy_sprite(enemy_type):
         for i in range(5):
             angle = i * 2 * 3.14159 / 5 - 3.14159 / 2
             points.append((
-                size//2 + int(size//2 * 0.9 * pygame.math.cos(angle)),
-                size//2 + int(size//2 * 0.9 * pygame.math.sin(angle))
+                size//2 + int(size//2 * 0.9 * math.cos(angle)),
+                size//2 + int(size//2 * 0.9 * math.sin(angle))
             ))
         pygame.draw.polygon(surface, (255, 255, 0), points, 3)
     
