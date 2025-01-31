@@ -195,7 +195,38 @@ def main():
         for bld in building_system.structures:
             bx = bld.x - camera.offset_x
             by = bld.y - camera.offset_y
-            pygame.draw.rect(screen, (139, 69, 19), (bx, by, bld.width, bld.height))
+            
+            # Base building color
+            if bld.structure_type == "Generator":
+                color = (255, 140, 0)  # Orange for generators
+            elif bld.structure_type == "Storage":
+                color = (139, 69, 19)  # Brown for storage
+            elif bld.structure_type == "Workshop":
+                color = (105, 105, 105)  # Gray for workshop
+            elif bld.structure_type == "Collector":
+                color = (46, 139, 87)  # Sea green for collectors
+            else:
+                color = (139, 69, 19)  # Default brown
+                
+            pygame.draw.rect(screen, color, (bx, by, bld.width, bld.height))
+            
+            # Health bar (red to green)
+            health_percent = bld.health / bld.max_health
+            health_width = bld.width * health_percent
+            health_color = (int(255 * (1 - health_percent)), int(255 * health_percent), 0)
+            pygame.draw.rect(screen, health_color, (bx, by - 5, health_width, 3))
+            
+            # Power indicator
+            if bld.power_required > 0:
+                power_percent = bld.power_received / bld.power_required
+                power_width = bld.width * power_percent
+                pygame.draw.rect(screen, (0, 191, 255), (bx, by - 9, power_width, 3))
+                
+            # Level indicator
+            if bld.level > 1:
+                font = pygame.font.Font(None, 20)
+                level_text = font.render(f"L{bld.level}", True, (255, 255, 255))
+                screen.blit(level_text, (bx + bld.width - 20, by + bld.height - 20))
 
         # NPCs
         for npc in npcs:
@@ -208,9 +239,26 @@ def main():
         py = player.rect.y - camera.offset_y
         pygame.draw.rect(screen, (178, 34, 34), (px, py, player.rect.width, player.rect.height))
         
-        # Build mode cursor
+        # Build mode cursor and power grid visualization
         if build_mode:
             mx, my = pygame.mouse.get_pos()
+            wx = mx + camera.offset_x
+            wy = my + camera.offset_y
+            
+            # Draw power connections between structures
+            for s1 in building_system.structures:
+                if s1.power_grid_id is not None:
+                    s1x = s1.x + s1.width/2 - camera.offset_x
+                    s1y = s1.y + s1.height/2 - camera.offset_y
+                    for s2 in building_system.structures:
+                        if (s2.power_grid_id == s1.power_grid_id and 
+                            s2 != s1):
+                            s2x = s2.x + s2.width/2 - camera.offset_x
+                            s2y = s2.y + s2.height/2 - camera.offset_y
+                            pygame.draw.line(screen, (0, 191, 255), 
+                                          (s1x, s1y), (s2x, s2y), 1)
+            
+            # Building placement preview
             pygame.draw.rect(screen, (255, 255, 0), (mx-20, my-20, 40, 40), 2)  # Yellow outline
             # Display current structure type
             if pygame.key.get_pressed()[pygame.K_1]: text = "Wall"
