@@ -126,18 +126,39 @@ class Player:
         if faction in self.faction_rep:
             self.faction_rep[faction] += amount
 
-    def attempt_attack(self, npcs, dt):
+    def attempt_attack(self, npcs, dt, combat_effects=None):
         """
-        Simple melee attack:
+        Melee attack with visual effects:
         - If an NPC is within attack_range, deal attack_damage to them.
+        - Show damage numbers and hit effects
         """
+        attacked = False
         for npc in npcs:
             dist_x = npc.rect.centerx - self.rect.centerx
             dist_y = npc.rect.centery - self.rect.centery
             dist = (dist_x**2 + dist_y**2) ** 0.5
             if dist <= self.attack_range:
+                # Deal damage
                 npc.health -= self.attack_damage
-                # Possibly adjust rep or cause aggression
-                # If you kill a Scavenger, faction rep might drop
+                attacked = True
+                
+                # Add visual effects if combat_effects system exists
+                if combat_effects:
+                    # Damage number
+                    combat_effects.add(DamageNumber(
+                        npc.rect.centerx, npc.rect.top, 
+                        self.attack_damage
+                    ))
+                    # Hit flash
+                    combat_effects.add(HitFlash(
+                        npc.rect.centerx, npc.rect.centery,
+                        npc.width * 1.5
+                    ))
+                    # Attack animation
+                    combat_effects.add(AttackAnimation(
+                        self.rect, npc.rect
+                    ))
+                
+                # Faction reputation effects
                 if npc.health <= 0 and npc.faction == "Scavengers":
                     self.change_faction_rep("Scavengers", -10)

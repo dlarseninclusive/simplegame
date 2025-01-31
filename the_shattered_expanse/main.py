@@ -11,6 +11,7 @@ from quests import QuestSystem
 from ui import UIManager, GameMenu
 from pathfinding import GridPathfinder
 from sprites import create_player_sprite
+from combat_effects import DamageNumber, HitFlash, AttackAnimation
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
@@ -25,6 +26,7 @@ def main():
 
     # Create objects
     player = Player(400, 300)
+    combat_effects = pygame.sprite.Group()
     
     # 1) Bigger world: 4000x4000
     camera = Camera(
@@ -111,7 +113,7 @@ def main():
                     crafting_system.open_crafting_menu(player)
                 # 4) Attack key: space bar => attempt to attack NPCs
                 if event.key == pygame.K_SPACE:
-                    player.attempt_attack(npcs, dt)
+                    player.attempt_attack(npcs, dt, combat_effects)
 
             # Building controls
             if build_mode:
@@ -250,6 +252,17 @@ def main():
         py = player.rect.y - camera.offset_y
         player_sprite = create_player_sprite()
         screen.blit(player_sprite, (px, py))
+        
+        # Update and draw combat effects
+        for effect in list(combat_effects):
+            if isinstance(effect, (DamageNumber, HitFlash)):
+                if not effect.update(dt):
+                    combat_effects.remove(effect)
+            elif isinstance(effect, AttackAnimation):
+                if effect.update(dt):
+                    effect.draw(screen, (camera.offset_x, camera.offset_y))
+                else:
+                    combat_effects.remove(effect)
         
         # Build mode cursor and power grid visualization
         if build_mode:
