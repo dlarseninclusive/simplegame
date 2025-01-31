@@ -156,39 +156,6 @@ class BuildingSystem:
                     print(f"Successfully placed {structure_type}")
             else:
                 print(f"Not enough resources for {structure_type}. Need: {cost}")
-            print("Attempting to place Wall")
-            if self.check_resources(player, self.basic_wall_cost):
-                self.place_structure("Wall", 40, 40, world_x, world_y, environment)
-                self.deduct_resources(player, self.basic_wall_cost)
-            else:
-                print(f"Not enough resources for Wall. Need: {self.basic_wall_cost}")
-                
-        elif pressed[pygame.K_2]:  # Advanced turret
-            if self.check_resources(player, self.advanced_turret_cost):
-                self.place_structure("Advanced Turret", 40, 40, world_x, world_y, environment)
-                self.deduct_resources(player, self.advanced_turret_cost)
-            else:
-                print(f"Not enough resources for Advanced Turret. Need: {self.advanced_turret_cost}")
-                
-        elif pressed[pygame.K_3]:  # Storage
-            if self.check_resources(player, self.storage_cost):
-                self.place_structure("Storage", 60, 60, world_x, world_y, environment)
-                self.deduct_resources(player, self.storage_cost)
-                
-        elif pressed[pygame.K_4]:  # Workshop
-            if self.check_resources(player, self.workshop_cost):
-                self.place_structure("Workshop", 80, 80, world_x, world_y, environment)
-                self.deduct_resources(player, self.workshop_cost)
-                
-        elif pressed[pygame.K_5]:  # Resource Collector
-            if self.check_resources(player, self.collector_cost):
-                self.place_structure("Collector", 40, 40, world_x, world_y, environment)
-                self.deduct_resources(player, self.collector_cost)
-                
-        elif pressed[pygame.K_6]:  # Generator
-            if self.check_resources(player, self.generator_cost):
-                self.place_structure("Generator", 50, 50, world_x, world_y, environment)
-                self.deduct_resources(player, self.generator_cost)
 
         # 1) Reclaim if 'R' is pressed while overlapping a structure
         if pressed[pygame.K_r]:
