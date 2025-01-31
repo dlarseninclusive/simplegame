@@ -2,6 +2,7 @@ import pygame
 from camera import Camera
 from player import Player
 from environment import Environment
+from lore import LoreSystem
 from resource import ResourceNode
 from npc import NPC
 from building import BuildingSystem
@@ -42,6 +43,10 @@ def main():
     environment.add_obstacle(800, 400, 60, 120)
     environment.add_obstacle(2200, 1200, 200, 200)
     environment.add_obstacle(3300, 2000, 150, 150)
+
+    # Initialize Lore System
+    lore_system = LoreSystem()
+    lore_system.generate_world_fragments(4000, 4000)
 
     # 2) Resource nodes, now bigger spread across the world
     resource_nodes = [

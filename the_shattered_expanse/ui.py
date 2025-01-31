@@ -123,6 +123,15 @@ class UIManager:
         pygame.draw.rect(screen, (200,0,0),
                          (minimap_x+px, minimap_y+py, 3, 3))
 
+        # Render Lore Fragments
+        for fragment in lore_system.fragments:
+            fragment.render(screen, (camera.offset_x, camera.offset_y))
+
+        # Check for Lore Fragment Discovery
+        discovered_fragment = lore_system.discover_fragment(player)
+        if discovered_fragment:
+            lore_system.render_discovered_fragments(screen, self.font, (camera.offset_x, camera.offset_y))
+
 class GameMenu:
     """
     A placeholder for a pause menu or in-game menu.
