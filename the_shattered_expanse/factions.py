@@ -2,28 +2,49 @@
 
 class Factions:
     """
-    Basic definitions for Shattered Expanse factions with territory & alliances.
+    Detailed faction system with cities, territories, and complex interactions.
     """
-    def __init__(self):
-        # store some territory bounds as placeholders
+    def __init__(self, world_width=4000, world_height=4000):
+        # Spread cities across the map
         self.faction_data = {
             "Automatons": {
                 "description": "Rogue machines left by the Architects.",
                 "allies": [],
                 "enemies": ["Scavengers", "Cog Preachers"],
-                "territory": [(1000, 1000, 500, 500)]  # x,y,w,h area
+                "city": {
+                    "name": "Machine Nexus",
+                    "location": (world_width - 300, world_height - 300),
+                    "size": (250, 250),
+                    "population": 500,
+                    "defenses": "High-tech automated turrets"
+                },
+                "territory": [(world_width - 500, world_height - 500, 500, 500)]
             },
             "Scavengers": {
                 "description": "Nomadic freebooters seeking scrap.",
                 "allies": [],
                 "enemies": ["Automatons"],
-                "territory": [(200, 200, 300, 300)]
+                "city": {
+                    "name": "Rust Haven",
+                    "location": (100, 100),
+                    "size": (250, 250),
+                    "population": 300,
+                    "defenses": "Makeshift walls and traps"
+                },
+                "territory": [(0, 0, 500, 500)]
             },
             "Cog Preachers": {
                 "description": "Zealots worshiping ancient machinery.",
                 "allies": [],
                 "enemies": [],
-                "territory": []
+                "city": {
+                    "name": "Sanctum of Gears",
+                    "location": (world_width // 2 - 125, world_height // 2 - 125),
+                    "size": (250, 250),
+                    "population": 200,
+                    "defenses": "Religious barriers and mechanical guardians"
+                },
+                "territory": [(world_width // 2 - 250, world_height // 2 - 250, 500, 500)]
             }
         }
 
