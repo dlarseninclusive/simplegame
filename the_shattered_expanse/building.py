@@ -116,11 +116,13 @@ class BuildingSystem:
     def attempt_placement(self, player, environment, world_x, world_y):
         pressed = pygame.key.get_pressed()
         
-        # Debug output of player's inventory
-        print(f"\nPlayer inventory: {player.inventory}")
+        # Debug output
+        print(f"\nAttempting placement at ({world_x}, {world_y})")
+        print(f"Player inventory: {player.inventory}")
         
         # Structure selection with number keys
         if pressed[pygame.K_1]:  # Basic wall
+            print("Attempting to place Wall")
             if self.check_resources(player, self.basic_wall_cost):
                 self.place_structure("Wall", 40, 40, world_x, world_y, environment)
                 self.deduct_resources(player, self.basic_wall_cost)
@@ -191,9 +193,28 @@ class BuildingSystem:
                 player.inventory[rtype] += amt
 
     def place_structure(self, structure_type, w, h, x, y, environment):
+        print(f"Placing {structure_type} at ({x}, {y})")
+        
+        # Check if position is valid
+        new_rect = pygame.Rect(x, y, w, h)
+        
+        # Check for overlapping structures
+        for structure in self.structures:
+            if pygame.Rect(structure.x, structure.y, 
+                         structure.width, structure.height).colliderect(new_rect):
+                print(f"Cannot place: overlaps existing structure")
+                return False
+                
+        # Check if within world bounds (assuming 2000x2000 world)
+        if x < 0 or y < 0 or x + w > 2000 or y + h > 2000:
+            print(f"Cannot place: outside world bounds")
+            return False
+            
         new_structure = Structure(x, y, w, h, structure_type)
         self.structures.append(new_structure)
-        environment.obstacles.append(pygame.Rect(x, y, w, h))
+        environment.obstacles.append(new_rect)
+        print(f"Successfully placed {structure_type}")
+        return True
 
     def check_resources(self, player, cost_dict):
         for rtype, needed in cost_dict.items():
