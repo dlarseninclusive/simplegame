@@ -273,7 +273,7 @@ def main():
             screen.blit(text_surface, (mx+25, my-10))
 
         ui_manager.draw_hud(screen, player, factions, build_mode, day_cycle)
-        ui_manager.draw_minimap(screen, player, npcs, environment.obstacles, camera)
+        ui_manager.draw_minimap(screen, player, npcs, environment.obstacles, camera, building_system)
 
         if show_menu:
             game_menu.draw_menu(screen)

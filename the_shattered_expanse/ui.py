@@ -63,7 +63,7 @@ class UIManager:
         time_surf = self.font.render(f"Time: {day_cycle:.1f}h", True, (255,255,255))
         screen.blit(time_surf, (x_offset, y_offset+80))
 
-    def draw_minimap(self, screen, player, npcs, obstacles, camera):
+    def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system):
         """
         A simple top-right corner minimap. We just scale down by some factor.
         """
