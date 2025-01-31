@@ -63,9 +63,10 @@ class UIManager:
         time_surf = self.font.render(f"Time: {day_cycle:.1f}h", True, (255,255,255))
         screen.blit(time_surf, (x_offset, y_offset+80))
 
-    def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system):
+    def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system, lore_system):
         """
         A simple top-right corner minimap. We just scale down by some factor.
+        Requires lore_system to be passed in to render lore fragments.
         """
         map_width = 150
         map_height = 150
@@ -124,13 +125,14 @@ class UIManager:
                          (minimap_x+px, minimap_y+py, 3, 3))
 
         # Render Lore Fragments
-        for fragment in lore_system.fragments:
-            fragment.render(screen, (camera.offset_x, camera.offset_y))
+        if lore_system:
+            for fragment in lore_system.fragments:
+                fragment.render(screen, (camera.offset_x, camera.offset_y))
 
-        # Check for Lore Fragment Discovery
-        discovered_fragment = lore_system.discover_fragment(player)
-        if discovered_fragment:
-            lore_system.render_discovered_fragments(screen, self.font, (camera.offset_x, camera.offset_y))
+            # Check for Lore Fragment Discovery
+            discovered_fragment = lore_system.discover_fragment(player)
+            if discovered_fragment:
+                lore_system.render_discovered_fragments(screen, self.font, (camera.offset_x, camera.offset_y))
 
 class GameMenu:
     """
