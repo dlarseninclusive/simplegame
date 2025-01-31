@@ -16,19 +16,31 @@ class Structure:
         self.upgrade_cost = {"scrap": 5, "artifact": 1}
         self.repair_cost = {"scrap": 1}
         
+        # Power system attributes
+        self.power_required = 0
+        self.power_received = 0
+        self.power_grid_id = None  # Structures on same grid share power
+        self.power_range = 100  # How far power can transmit
+        
         # Structure-specific attributes
         if structure_type == "Storage":
             self.capacity = 100 * self.level
             self.stored = 0
+            self.power_required = 2
         elif structure_type == "Generator":
             self.power_output = 10 * self.level
             self.active = True
+            self.power_required = 0  # Generators don't need power
         elif structure_type == "Collector":
             self.collection_rate = 1 * self.level
             self.collection_timer = 0
+            self.power_required = 3
         elif structure_type == "Workshop":
             self.production_speed = 1 * self.level
             self.current_project = None
+            self.power_required = 5
+        elif structure_type == "Advanced Turret":
+            self.power_required = 4
             
     def upgrade(self, player):
         """Upgrade structure to next level if player has resources"""
@@ -97,6 +109,9 @@ class BuildingSystem:
         self.workshop_cost = {"scrap": 4, "wood": 3, "artifact": 1}
         self.collector_cost = {"scrap": 2, "wood": 1}
         self.generator_cost = {"scrap": 5, "artifact": 2}
+        
+        # Power grid tracking
+        self.next_grid_id = 0
 
     def attempt_placement(self, player, environment, world_x, world_y):
         pressed = pygame.key.get_pressed()
@@ -185,24 +200,29 @@ class BuildingSystem:
             
     def update_structures(self, dt, player):
         """Update all structures' production and status"""
+        # First, update power grids
+        self.update_power_grids()
+        
         for structure in self.structures:
-            if structure.structure_type == "Collector":
-                structure.collection_timer += dt
-                if structure.collection_timer >= 5.0:  # Collect every 5 seconds
-                    structure.collection_timer = 0
-                    # Add resources to player inventory based on collection rate
-                    collected = structure.collection_rate
-                    player.inventory["scrap"] = player.inventory.get("scrap", 0) + collected
-                    
-            elif structure.structure_type == "Generator":
-                if structure.active:
-                    # Could implement power system here
-                    pass
-                    
-            elif structure.structure_type == "Workshop":
-                if structure.current_project:
-                    # Could implement crafting progress here
-                    pass
+            # Only operate if structure has power (or is a generator)
+            if structure.power_received >= structure.power_required or structure.structure_type == "Generator":
+                if structure.structure_type == "Collector":
+                    structure.collection_timer += dt
+                    if structure.collection_timer >= 5.0:  # Collect every 5 seconds
+                        structure.collection_timer = 0
+                        # Add resources to player inventory based on collection rate
+                        collected = structure.collection_rate
+                        player.inventory["scrap"] = player.inventory.get("scrap", 0) + collected
+                        
+                elif structure.structure_type == "Generator":
+                    if structure.active:
+                        # Power distribution handled in update_power_grids
+                        pass
+                        
+                elif structure.structure_type == "Workshop":
+                    if structure.current_project:
+                        # Could implement crafting progress here
+                        pass
                     
     def attempt_upgrade(self, player, world_x, world_y):
         """Try to upgrade structure player is standing on"""
@@ -219,3 +239,56 @@ class BuildingSystem:
                          structure.width, structure.height).collidepoint(world_x, world_y):
                 return structure.repair(player)
         return False
+        
+    def update_power_grids(self):
+        """Update power distribution across all structures"""
+        # Reset power received
+        for structure in self.structures:
+            structure.power_received = 0
+            structure.power_grid_id = None
+            
+        # Assign grid IDs to connected structures
+        for structure in self.structures:
+            if structure.power_grid_id is None:
+                self._flood_fill_power_grid(structure, self.next_grid_id)
+                self.next_grid_id += 1
+                
+        # Calculate and distribute power within each grid
+        grid_powers = {}  # grid_id -> (total_output, total_required)
+        
+        # Sum up power generation and requirements
+        for structure in self.structures:
+            grid_id = structure.power_grid_id
+            if grid_id not in grid_powers:
+                grid_powers[grid_id] = [0, 0]  # [output, required]
+                
+            if structure.structure_type == "Generator" and structure.active:
+                grid_powers[grid_id][0] += structure.power_output
+            grid_powers[grid_id][1] += structure.power_required
+            
+        # Distribute available power
+        for structure in self.structures:
+            grid_id = structure.power_grid_id
+            output, required = grid_powers[grid_id]
+            
+            if required > 0:
+                # Distribute power proportionally if not enough for everyone
+                power_ratio = min(1.0, output / required)
+                structure.power_received = structure.power_required * power_ratio
+                
+    def _flood_fill_power_grid(self, start_structure, grid_id):
+        """Recursively assign grid_id to all connected structures"""
+        if start_structure.power_grid_id is not None:
+            return
+            
+        start_structure.power_grid_id = grid_id
+        
+        # Find all structures in range
+        for structure in self.structures:
+            if structure.power_grid_id is None:
+                dx = structure.x - start_structure.x
+                dy = structure.y - start_structure.y
+                distance = (dx * dx + dy * dy) ** 0.5
+                
+                if distance <= start_structure.power_range:
+                    self._flood_fill_power_grid(structure, grid_id)
