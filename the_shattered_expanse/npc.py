@@ -12,14 +12,21 @@ class NPC:
     def __init__(self, x, y, faction="Scavengers", group_id=None, enemy_type="warrior", spawn_region="south"):
         self.spawn_region = spawn_region
         self.enemy_type = enemy_type
+        
+        # Ensure enemy_type exists in ENEMY_STATS
+        if enemy_type not in ENEMY_STATS:
+            # Fallback to a default type if not found
+            enemy_type = "warrior"
+        
         stats = ENEMY_STATS[enemy_type]
         
-        self.width = stats["size"]
-        self.height = stats["size"]
+        # Use a default size if not specified
+        self.width = stats.get("size", 32)
+        self.height = stats.get("size", 32)
         self.speed = stats["speed"]
         self.rect = pygame.Rect(x, y, self.width, self.height)
         self.faction = faction
-        self.hostile = True
+        self.hostile = stats.get("hostile", True)
         self.group_id = group_id
 
         self.move_cooldown = 0

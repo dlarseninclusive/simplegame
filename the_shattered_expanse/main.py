@@ -13,6 +13,7 @@ from ui import UIManager, GameMenu
 from pathfinding import GridPathfinder
 from sprites import create_player_sprite
 from combat_effects import DamageNumber, HitFlash, AttackAnimation
+from city_generator import CityGenerator
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
@@ -71,14 +72,27 @@ def main():
         target_count=5
     )
 
-    # NPCs with more advanced AI and different types
-    npcs = [
-        NPC(500, 200, faction="Automatons", group_id=1, enemy_type="scout"),
-        NPC(1200, 600, faction="Scavengers", group_id=2, enemy_type="warrior"),
-        NPC(1500, 1300, faction="Scavengers", group_id=2, enemy_type="heavy"),
-        NPC(800, 800, faction="Automatons", group_id=1, enemy_type="ranged"),
-        NPC(2000, 2000, faction="Automatons", group_id=3, enemy_type="boss"),
-    ]
+    # City Generator
+    city_generator = CityGenerator()
+
+    # Generate cities for each faction
+    city_buildings = {}
+    city_npcs = {}
+    city_resources = {}
+    for faction in ["Automatons", "Scavengers", "Cog Preachers"]:
+        city_buildings[faction] = city_generator.generate_city_buildings(faction)
+        city_npcs[faction] = city_generator.generate_city_npcs(faction)
+        city_resources[faction] = city_generator.generate_city_resources(faction)
+
+    # Combine all NPCs
+    npcs = []
+    for faction_npcs in city_npcs.values():
+        npcs.extend(faction_npcs)
+
+    # Combine all resource nodes
+    resource_nodes = []
+    for faction_resources in city_resources.values():
+        resource_nodes.extend(faction_resources)
 
     building_system = BuildingSystem()
     crafting_system = CraftingSystem()
@@ -201,7 +215,14 @@ def main():
                     color = (186, 85, 211)
                 pygame.draw.rect(screen, color, (nx, ny, node.rect.width, node.rect.height))
 
-        # Buildings with more variety and strategic placement
+        # Render city buildings for each faction
+        for faction, buildings in city_buildings.items():
+            for building in buildings:
+                bx = building.rect.x - camera.offset_x
+                by = building.rect.y - camera.offset_y
+                screen.blit(building.image, (bx, by))
+
+        # Existing building system rendering
         building_types = [
             "Generator", "Storage", "Workshop", "Collector", 
             "Turret", "Wall", "Research Station", "Repair Bay", 

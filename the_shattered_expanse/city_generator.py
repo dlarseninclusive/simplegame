@@ -14,37 +14,63 @@ class CityGenerator:
         # Building type configurations
         self.building_types = {
             "Automatons": {
-                "types": ["generator", "storage", "workshop", "defense_tower"],
+                "types": ["generator", "storage", "workshop", "defense_tower", "research_lab", "power_station"],
                 "color": (100, 100, 255),  # Blue-ish
-                "size_range": (40, 80)
+                "size_range": (40, 100),
+                "npc_types": ["scout", "ranged", "heavy"],
+                "resource_bias": {"scrap": 0.5, "artifact": 0.3, "water": 0.2}
             },
             "Scavengers": {
-                "types": ["shelter", "workshop", "trading_post", "watchtower"],
+                "types": ["shelter", "workshop", "trading_post", "watchtower", "storage", "repair_bay"],
                 "color": (255, 150, 50),   # Orange-ish
-                "size_range": (30, 70)
+                "size_range": (30, 90),
+                "npc_types": ["warrior", "trader", "scout"],
+                "resource_bias": {"scrap": 0.4, "food": 0.3, "water": 0.3}
             },
             "Cog Preachers": {
-                "types": ["shrine", "library", "workshop", "meditation_center"],
+                "types": ["shrine", "library", "workshop", "meditation_center", "research_station", "archive"],
                 "color": (150, 50, 150),   # Purple-ish
-                "size_range": (50, 90)
+                "size_range": (50, 110),
+                "npc_types": ["scholar", "priest", "guardian"],
+                "resource_bias": {"artifact": 0.5, "scrap": 0.3, "water": 0.2}
             }
         }
         
         # Road configuration
         self.road_color = (100, 100, 100)  # Gray roads
         self.road_width = 20
+        
+        # City layout parameters
+        self.city_layout_params = {
+            "Automatons": {
+                "grid_spacing": 60,
+                "building_density": 0.7,
+                "defense_priority": 0.3
+            },
+            "Scavengers": {
+                "grid_spacing": 50,
+                "building_density": 0.6,
+                "defense_priority": 0.2
+            },
+            "Cog Preachers": {
+                "grid_spacing": 70,
+                "building_density": 0.5,
+                "defense_priority": 0.1
+            }
+        }
 
     def generate_city_buildings(self, faction_name):
         """
-        Create a collection of buildings for a specific faction.
+        Create a collection of buildings for a specific faction with strategic placement.
         
         :param faction_name: Name of the faction to generate buildings for
         :return: pygame.sprite.Group of city buildings
         """
         buildings = pygame.sprite.Group()
         faction_config = self.building_types.get(faction_name, {})
+        layout_params = self.city_layout_params.get(faction_name, {})
         
-        if not faction_config:
+        if not faction_config or not layout_params:
             return buildings
 
         # City center location (from factions.py)
@@ -55,41 +81,124 @@ class CityGenerator:
         }
         
         city_center = city_data.get(faction_name, (0, 0))
+        grid_spacing = layout_params.get('grid_spacing', 50)
+        building_density = layout_params.get('building_density', 0.6)
+        defense_priority = layout_params.get('defense_priority', 0.2)
         
-        # Generate 10-15 buildings per city
-        num_buildings = random.randint(10, 15)
+        # Generate grid-based city layout
+        grid_width = int(math.sqrt(len(faction_config['types']) * 10))
+        grid_height = grid_width
         
-        for _ in range(num_buildings):
-            # Randomize building position within city bounds
-            bx = city_center[0] + random.randint(-200, 200)
-            by = city_center[1] + random.randint(-200, 200)
-            
-            # Randomize building size and type
-            building_type = random.choice(faction_config["types"])
-            min_size, max_size = faction_config["size_range"]
-            building_size = random.randint(min_size, max_size)
-            
-            # Create building sprite
-            building_sprite = pygame.Surface((building_size, building_size))
-            building_sprite.fill(faction_config["color"])
-            
-            # Create building sprite with slight variation
-            if building_type == "defense_tower":
-                pygame.draw.rect(building_sprite, (255, 0, 0), 
-                                 (building_size//4, 0, building_size//2, building_size), 2)
-            elif building_type == "trading_post":
-                pygame.draw.circle(building_sprite, (0, 255, 0), 
-                                   (building_size//2, building_size//2), building_size//3, 2)
-            
-            # Create sprite
-            building = pygame.sprite.Sprite()
-            building.image = building_sprite
-            building.rect = building_sprite.get_rect(topleft=(bx, by))
-            building.type = building_type
-            
-            buildings.add(building)
+        for x in range(grid_width):
+            for y in range(grid_height):
+                # Probabilistic building placement
+                if random.random() < building_density:
+                    # Calculate grid-based position
+                    bx = city_center[0] + (x - grid_width//2) * grid_spacing
+                    by = city_center[1] + (y - grid_height//2) * grid_spacing
+                    
+                    # Weighted building type selection
+                    if random.random() < defense_priority and 'defense_tower' in faction_config['types']:
+                        building_type = 'defense_tower'
+                    else:
+                        building_type = random.choice(faction_config['types'])
+                    
+                    # Randomize building size
+                    min_size, max_size = faction_config["size_range"]
+                    building_size = random.randint(min_size, max_size)
+                    
+                    # Create building sprite
+                    building_sprite = pygame.Surface((building_size, building_size), pygame.SRCALPHA)
+                    building_color = faction_config["color"]
+                    
+                    # Specialized building rendering
+                    if building_type == "defense_tower":
+                        pygame.draw.rect(building_sprite, building_color, 
+                                         (0, 0, building_size, building_size))
+                        pygame.draw.rect(building_sprite, (255, 0, 0), 
+                                         (building_size//4, 0, building_size//2, building_size), 2)
+                    elif building_type == "trading_post":
+                        pygame.draw.circle(building_sprite, building_color, 
+                                           (building_size//2, building_size//2), building_size//2)
+                        pygame.draw.circle(building_sprite, (0, 255, 0), 
+                                           (building_size//2, building_size//2), building_size//3, 2)
+                    else:
+                        building_sprite.fill(building_color)
+                    
+                    # Create sprite
+                    building = pygame.sprite.Sprite()
+                    building.image = building_sprite
+                    building.rect = building_sprite.get_rect(topleft=(bx, by))
+                    building.type = building_type
+                    
+                    buildings.add(building)
         
         return buildings
+
+    def generate_city_npcs(self, faction_name, num_npcs=20):
+        """
+        Generate NPCs for a specific faction's city.
+        
+        :param faction_name: Name of the faction
+        :param num_npcs: Number of NPCs to generate
+        :return: List of NPCs
+        """
+        from npc import NPC  # Import here to avoid circular import
+        
+        faction_config = self.building_types.get(faction_name, {})
+        city_data = {
+            "Automatons": (self.world_width - 300, self.world_height - 300),
+            "Scavengers": (100, 100),
+            "Cog Preachers": (self.world_width // 2 - 125, self.world_height // 2 - 125)
+        }
+        
+        city_center = city_data.get(faction_name, (0, 0))
+        npcs = []
+        
+        for _ in range(num_npcs):
+            # Randomize NPC position within city bounds
+            nx = city_center[0] + random.randint(-250, 250)
+            ny = city_center[1] + random.randint(-250, 250)
+            
+            # Select NPC type based on faction
+            npc_type = random.choice(faction_config.get('npc_types', ['warrior']))
+            
+            npc = NPC(nx, ny, faction=faction_name, group_id=1, enemy_type=npc_type)
+            npcs.append(npc)
+        
+        return npcs
+
+    def generate_city_resources(self, faction_name):
+        """
+        Generate resource nodes specific to a faction's city.
+        
+        :param faction_name: Name of the faction
+        :return: List of resource nodes
+        """
+        from resource import ResourceNode
+        
+        faction_config = self.building_types.get(faction_name, {})
+        city_data = {
+            "Automatons": (self.world_width - 300, self.world_height - 300),
+            "Scavengers": (100, 100),
+            "Cog Preachers": (self.world_width // 2 - 125, self.world_height // 2 - 125)
+        }
+        
+        city_center = city_data.get(faction_name, (0, 0))
+        resources = []
+        
+        # Generate resources based on faction's resource bias
+        resource_bias = faction_config.get('resource_bias', {})
+        for resource, bias in resource_bias.items():
+            num_nodes = int(10 * bias)  # Scale number of nodes by bias
+            for _ in range(num_nodes):
+                rx = city_center[0] + random.randint(-250, 250)
+                ry = city_center[1] + random.randint(-250, 250)
+                
+                resource_node = ResourceNode(rx, ry, 40, 40, resource)
+                resources.append(resource_node)
+        
+        return resources
 
     def generate_city_territories(self, factions_data):
         """
