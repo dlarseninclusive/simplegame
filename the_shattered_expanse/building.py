@@ -114,6 +114,10 @@ class BuildingSystem:
         self.next_grid_id = 0
 
     def attempt_placement(self, player, environment, world_x, world_y):
+        # Adjust position to center the structure on the mouse
+        world_x -= 20  # Half of default width
+        world_y -= 20  # Half of default height
+        
         # Debug output
         print(f"\nAttempting placement at ({world_x}, {world_y})")
         print(f"Player inventory: {player.inventory}")
@@ -183,11 +187,18 @@ class BuildingSystem:
                 environment.obstacles.remove(srect)
 
             # Refund resources based on structure type
-            # If it's a wall, refund basic_wall_cost
             if s.structure_type == "Wall":
                 cost = self.basic_wall_cost
-            else:
+            elif s.structure_type == "Advanced Turret":
                 cost = self.advanced_turret_cost
+            elif s.structure_type == "Storage":
+                cost = self.storage_cost
+            elif s.structure_type == "Workshop":
+                cost = self.workshop_cost
+            elif s.structure_type == "Collector":
+                cost = self.collector_cost
+            elif s.structure_type == "Generator":
+                cost = self.generator_cost
 
             # For simplicity, give 100% back. Or use 50% if you want partial.
             for rtype, amt in cost.items():
@@ -206,8 +217,8 @@ class BuildingSystem:
                 print(f"Cannot place: overlaps existing structure")
                 return False
                 
-        # Check if within world bounds (assuming 2000x2000 world)
-        if x < 0 or y < 0 or x + w > 2000 or y + h > 2000:
+        # Check if within world bounds (4000x4000 world)
+        if x < 0 or y < 0 or x + w > 4000 or y + h > 4000:
             print(f"Cannot place: outside world bounds")
             return False
             
