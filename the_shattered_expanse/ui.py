@@ -148,6 +148,22 @@ class GameMenu:
         overlay.fill((0, 0, 0, 128))  # semi-transparent dark
         screen.blit(overlay, (0,0))
 
-        text = self.font.render("Game Paused - ESC to Resume", True, (255, 255, 255))
-        screen.blit(text, (self.width//2 - text.get_width()//2,
-                           self.height//2 - text.get_height()//2))
+        controls = [
+            "Movement: WASD",
+            "Build Mode: B",
+            "Collect Resource: E",
+            "Attack: Spacebar",
+            "Crafting Menu: C",
+            "Upgrade Structure: U (in build mode)",
+            "Repair Structure: H (in build mode)",
+            "Reclaim Structure: Right-Click (in build mode)",
+            "Place Structures: 1-6 (in build mode)",
+            "Pause/Resume: ESC"
+        ]
+
+        title = self.font.render("Game Paused - ESC to Resume", True, (255, 255, 255))
+        screen.blit(title, (self.width//2 - title.get_width()//2, 100))
+
+        for i, control in enumerate(controls):
+            text = pygame.font.SysFont(None, 24).render(control, True, (200, 200, 200))
+            screen.blit(text, (self.width//2 - text.get_width()//2, 200 + i*30))
