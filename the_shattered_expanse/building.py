@@ -13,6 +13,8 @@ class Structure:
         self.health = 100
         self.max_health = 100
         self.level = 1
+        self.upgrade_cost = {"scrap": 5, "artifact": 1}
+        self.repair_cost = {"scrap": 1}
         
         # Structure-specific attributes
         if structure_type == "Storage":
@@ -27,6 +29,59 @@ class Structure:
         elif structure_type == "Workshop":
             self.production_speed = 1 * self.level
             self.current_project = None
+            
+    def upgrade(self, player):
+        """Upgrade structure to next level if player has resources"""
+        scaled_cost = {k: v * self.level for k, v in self.upgrade_cost.items()}
+        
+        # Check if player has enough resources
+        for resource, amount in scaled_cost.items():
+            if player.inventory.get(resource, 0) < amount:
+                return False
+                
+        # Deduct resources and upgrade
+        for resource, amount in scaled_cost.items():
+            player.inventory[resource] -= amount
+            
+        self.level += 1
+        self.max_health *= 1.5
+        self.health = self.max_health
+        
+        # Upgrade structure-specific attributes
+        if self.structure_type == "Storage":
+            self.capacity = 100 * self.level
+        elif self.structure_type == "Generator":
+            self.power_output = 10 * self.level
+        elif self.structure_type == "Collector":
+            self.collection_rate = 1 * self.level
+        elif self.structure_type == "Workshop":
+            self.production_speed = 1 * self.level
+        
+        return True
+        
+    def repair(self, player):
+        """Repair structure if player has resources"""
+        if self.health >= self.max_health:
+            return False
+            
+        missing_health = self.max_health - self.health
+        repair_amount = min(missing_health, 20)  # Repair in chunks of 20
+        
+        # Calculate resource cost based on repair amount
+        scaled_cost = {k: max(1, int(v * (repair_amount / self.max_health))) 
+                      for k, v in self.repair_cost.items()}
+        
+        # Check if player has enough resources
+        for resource, amount in scaled_cost.items():
+            if player.inventory.get(resource, 0) < amount:
+                return False
+                
+        # Deduct resources and repair
+        for resource, amount in scaled_cost.items():
+            player.inventory[resource] -= amount
+            
+        self.health = min(self.max_health, self.health + repair_amount)
+        return True
 
 class BuildingSystem:
     """
@@ -127,3 +182,40 @@ class BuildingSystem:
     def deduct_resources(self, player, cost_dict):
         for rtype, needed in cost_dict.items():
             player.inventory[rtype] -= needed
+            
+    def update_structures(self, dt, player):
+        """Update all structures' production and status"""
+        for structure in self.structures:
+            if structure.structure_type == "Collector":
+                structure.collection_timer += dt
+                if structure.collection_timer >= 5.0:  # Collect every 5 seconds
+                    structure.collection_timer = 0
+                    # Add resources to player inventory based on collection rate
+                    collected = structure.collection_rate
+                    player.inventory["scrap"] = player.inventory.get("scrap", 0) + collected
+                    
+            elif structure.structure_type == "Generator":
+                if structure.active:
+                    # Could implement power system here
+                    pass
+                    
+            elif structure.structure_type == "Workshop":
+                if structure.current_project:
+                    # Could implement crafting progress here
+                    pass
+                    
+    def attempt_upgrade(self, player, world_x, world_y):
+        """Try to upgrade structure player is standing on"""
+        for structure in self.structures:
+            if pygame.Rect(structure.x, structure.y, 
+                         structure.width, structure.height).collidepoint(world_x, world_y):
+                return structure.upgrade(player)
+        return False
+        
+    def attempt_repair(self, player, world_x, world_y):
+        """Try to repair structure player is standing on"""
+        for structure in self.structures:
+            if pygame.Rect(structure.x, structure.y, 
+                         structure.width, structure.height).collidepoint(world_x, world_y):
+                return structure.repair(player)
+        return False

@@ -9,7 +9,11 @@ class CraftingSystem:
         # Example recipes: "Metal Plate" from 2 scrap, "Refined Water" from 1 water
         self.recipes = {
             "Metal Plate": {"scrap": 2},
-            "Refined Water": {"water": 1}
+            "Refined Water": {"water": 1},
+            "Building Materials": {"scrap": 3},
+            "Advanced Components": {"scrap": 2, "artifact": 1},
+            "Power Core": {"artifact": 2},
+            "Repair Kit": {"scrap": 1, "artifact": 1}
         }
 
     def open_crafting_menu(self, player):
