@@ -49,6 +49,7 @@ class UIManager:
         resource_text = (f"Scrap:{player.inventory['scrap']} "
                          f"Water:{player.inventory['water']} "
                          f"Food:{player.inventory['food']} "
+                         f"Wood:{player.inventory['wood']} "
                          f"Artifact:{player.inventory['artifact']}")
         res_surf = self.font.render(resource_text, True, (255,255,255))
         screen.blit(res_surf, (x_offset, y_offset+50))
@@ -72,9 +73,9 @@ class UIManager:
         minimap_y = 10
         pygame.draw.rect(screen, (20,20,20), (minimap_x, minimap_y, map_width, map_height))
 
-        # scale factor (assuming world=2000x2000)
-        scale_x = map_width / 2000
-        scale_y = map_height / 2000
+        # scale factor for 4000x4000 world
+        scale_x = map_width / 4000
+        scale_y = map_height / 4000
 
         # Draw obstacles
         for obs in obstacles:
@@ -93,6 +94,28 @@ class UIManager:
             ny = int(npc.rect.y * scale_y)
             pygame.draw.rect(screen, (100,100,100),
                              (minimap_x+nx, minimap_y+ny, 2, 2))
+
+        # Draw buildings
+        for bld in building_system.structures:
+            bx = int(bld.x * scale_x)
+            by = int(bld.y * scale_y)
+            bw = max(1, int(bld.width * scale_x))
+            bh = max(1, int(bld.height * scale_y))
+            
+            # Different colors for different building types
+            if bld.structure_type == "Generator":
+                color = (255, 140, 0)  # Orange
+            elif bld.structure_type == "Storage":
+                color = (139, 69, 19)  # Brown
+            elif bld.structure_type == "Workshop":
+                color = (105, 105, 105)  # Gray
+            elif bld.structure_type == "Collector":
+                color = (46, 139, 87)  # Sea green
+            else:
+                color = (139, 69, 19)  # Default brown
+                
+            pygame.draw.rect(screen, color,
+                           (minimap_x+bx, minimap_y+by, bw, bh))
 
         # Draw player
         px = int(player.rect.x * scale_x)
