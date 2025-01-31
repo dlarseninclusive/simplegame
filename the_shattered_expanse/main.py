@@ -196,24 +196,48 @@ def main():
                     color = (186, 85, 211)
                 pygame.draw.rect(screen, color, (nx, ny, node.rect.width, node.rect.height))
 
-        # Buildings
+        # Buildings with more variety and strategic placement
+        building_types = [
+            "Generator", "Storage", "Workshop", "Collector", 
+            "Turret", "Wall", "Research Station", "Repair Bay", 
+            "Communication Tower", "Power Relay"
+        ]
+    
         for bld in building_system.structures:
             bx = bld.x - camera.offset_x
             by = bld.y - camera.offset_y
-            
-            # Base building color
-            if bld.structure_type == "Generator":
-                color = (255, 140, 0)  # Orange for generators
-            elif bld.structure_type == "Storage":
-                color = (139, 69, 19)  # Brown for storage
-            elif bld.structure_type == "Workshop":
-                color = (105, 105, 105)  # Gray for workshop
-            elif bld.structure_type == "Collector":
-                color = (46, 139, 87)  # Sea green for collectors
+        
+            # Enhanced building color scheme
+            building_colors = {
+                "Generator": (255, 140, 0),      # Orange
+                "Storage": (139, 69, 19),        # Brown
+                "Workshop": (105, 105, 105),     # Gray
+                "Collector": (46, 139, 87),      # Sea green
+                "Turret": (178, 34, 34),         # Firebrick red
+                "Wall": (112, 128, 144),         # Slate gray
+                "Research Station": (70, 130, 180),  # Steel blue
+                "Repair Bay": (32, 178, 170),    # Light sea green
+                "Communication Tower": (75, 0, 130),  # Indigo
+                "Power Relay": (255, 215, 0)     # Gold
+            }
+        
+            color = building_colors.get(bld.structure_type, (139, 69, 19))
+        
+            # Different shapes or rendering for special buildings
+            if bld.structure_type == "Communication Tower":
+                # Render as a taller, thinner structure
+                pygame.draw.rect(screen, color, (bx, by, bld.width//2, bld.height*1.5))
+            elif bld.structure_type == "Turret":
+                # Render as a circular/octagonal shape
+                pygame.draw.polygon(screen, color, [
+                    (bx, by+bld.height//2),
+                    (bx+bld.width//2, by),
+                    (bx+bld.width, by+bld.height//2),
+                    (bx+bld.width, by+bld.height),
+                    (bx, by+bld.height)
+                ])
             else:
-                color = (139, 69, 19)  # Default brown
-                
-            pygame.draw.rect(screen, color, (bx, by, bld.width, bld.height))
+                pygame.draw.rect(screen, color, (bx, by, bld.width, bld.height))
             
             # Health bar (red to green)
             health_percent = bld.health / bld.max_health

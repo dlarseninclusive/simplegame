@@ -98,9 +98,32 @@ class Structure:
 class BuildingSystem:
     """
     Allows player to place or reclaim structures if they have enough resources.
+    Enhanced with more building types and strategic placement logic.
     """
     def __init__(self):
         self.structures = []
+        
+        # Predefined building costs and requirements
+        self.building_costs = {
+            "Generator": {"scrap": 50, "artifact": 1},
+            "Storage": {"scrap": 30, "wood": 20},
+            "Workshop": {"scrap": 75, "artifact": 2},
+            "Collector": {"scrap": 25, "water": 10},
+            "Turret": {"scrap": 40, "artifact": 1},
+            "Wall": {"scrap": 20},
+            "Research Station": {"scrap": 100, "artifact": 3},
+            "Repair Bay": {"scrap": 60, "water": 20},
+            "Communication Tower": {"scrap": 80, "artifact": 2},
+            "Power Relay": {"scrap": 45, "artifact": 1}
+        }
+        
+        # Strategic placement zones
+        self.strategic_zones = {
+            "south": (0, 4000, 2500, 4000),     # Southern region
+            "north": (0, 4000, 0, 1500),        # Northern region
+            "east": (2500, 4000, 0, 4000),      # Eastern region
+            "west": (0, 1500, 0, 4000)          # Western region
+        }
         # Basic structure costs
         self.basic_wall_cost = {"scrap": 2}
         self.advanced_turret_cost = {"scrap": 5, "artifact": 1}
