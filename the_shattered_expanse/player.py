@@ -30,10 +30,11 @@ class Player:
 
         # Starting inventory: enough to build a small base
         self.inventory = {
-            "scrap": 30,    # Enough for a few walls
-            "water": 3,
-            "food": 3,
-            "artifact": 0
+            "scrap": 50,    # Enough for several structures
+            "water": 10,
+            "food": 10,
+            "artifact": 5,  # For advanced structures
+            "wood": 20     # For new building types
         }
 
         self.faction_rep = {
@@ -80,9 +81,9 @@ class Player:
                 elif self.vy < 0:
                     self.rect.top = obs.bottom
 
-        # Thirst & Hunger drain
-        self.thirst -= 5 * dt
-        self.hunger -= 3 * dt
+        # Thirst & Hunger drain (reduced rates)
+        self.thirst -= 1 * dt  # Was 5
+        self.hunger -= 0.5 * dt  # Was 3
         if self.thirst < 0:
             self.thirst = 0
             self.health -= 2 * dt
