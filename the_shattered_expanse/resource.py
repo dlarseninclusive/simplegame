@@ -1,5 +1,5 @@
 import pygame
-from data import get_resource_data
+from data import RESOURCE_DATA, get_resource_data
 
 class ResourceNode:
     """
