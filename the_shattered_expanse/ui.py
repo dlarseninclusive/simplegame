@@ -11,7 +11,8 @@ class UIManager:
         self.screen_height = screen_height
         self.font = pygame.font.SysFont(None, 20)
         self.show_equipment = False
-        self.show_minimap = True  # Add this line
+        self.show_minimap = True
+        self.show_backpack = False  # New line
         
         # Separate status bar resources from inventory
         self.status_resources = {
@@ -41,6 +42,9 @@ class UIManager:
 
         # Draw damage log
         self.draw_damage_log(screen, x_offset, y_offset + 90)
+
+        # Draw backpack
+        self.draw_backpack(screen, player)
 
         # Thirst
         thirst_ratio = player.thirst / player.max_thirst
@@ -161,6 +165,38 @@ class UIManager:
     def toggle_minimap(self):
         """Toggle minimap visibility"""
         self.show_minimap = not self.show_minimap
+
+    def toggle_backpack_display(self):
+        """Toggle backpack visibility"""
+        self.show_backpack = not self.show_backpack
+
+    def draw_backpack(self, screen, player):
+        """Draw backpack contents"""
+        if not self.show_backpack:
+            return
+            
+        # Backpack panel on left side
+        panel_width = 200
+        panel_height = 400
+        panel_x = 10
+        panel_y = 150
+        
+        # Draw panel background
+        pygame.draw.rect(screen, (40, 40, 40), 
+                        (panel_x, panel_y, panel_width, panel_height))
+        pygame.draw.rect(screen, (100, 100, 100), 
+                        (panel_x, panel_y, panel_width, panel_height), 2)
+        
+        # Title
+        title = self.font.render("Backpack (I to hide)", True, (255, 255, 255))
+        screen.blit(title, (panel_x + 10, panel_y + 10))
+        
+        # Draw items
+        item_y = panel_y + 40
+        for item, quantity in player.backpack.items:
+            item_text = self.font.render(f"{item.name} x{quantity}", True, (255, 255, 255))
+            screen.blit(item_text, (panel_x + 10, item_y))
+            item_y += 25
 
     def log_damage(self, damage, source):
         """Log a damage event"""
@@ -322,11 +358,13 @@ class GameMenu:
             "",
             "Equipment & Inventory:",
             "TAB - Toggle Equipment Panel",
+            "I - Toggle Backpack",
             "F1-F6 - Toggle Equipment Slots",
             "C - Open Crafting Menu",
             "",
             "Interface:",
             "M - Toggle Minimap",
+            "I - Toggle Backpack",
             "ESC - Open/Close Menu",
             "",
             "Faction & Quests:",

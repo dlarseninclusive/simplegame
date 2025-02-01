@@ -138,6 +138,8 @@ def main():
                     ui_manager.toggle_equipment_display()
                 if event.key == pygame.K_m:  # Add minimap toggle
                     ui_manager.toggle_minimap()
+                if event.key == pygame.K_i:  # Toggle backpack
+                    ui_manager.toggle_backpack_display()
                 # Equipment hotkeys
                 if pygame.K_F1 <= event.key <= pygame.K_F6:
                     slot_index = event.key - pygame.K_F1
@@ -181,19 +183,13 @@ def main():
                 # Update building system
                 building_system.update_structures(dt, player)
 
-                # Equipment toggle hotkeys
-                if event.key == pygame.K_F1:
-                    player.toggle_equipment_slot("weapon")
-                if event.key == pygame.K_F2:
-                    player.toggle_equipment_slot("chest")
-                if event.key == pygame.K_F3:
-                    player.toggle_equipment_slot("head")
-                if event.key == pygame.K_F4:
-                    player.toggle_equipment_slot("legs")
-                if event.key == pygame.K_F5:
-                    player.toggle_equipment_slot("feet")
-                if event.key == pygame.K_F6:
-                    player.toggle_equipment_slot("offhand")
+            # Equipment toggle hotkeys (moved outside build_mode check)
+            if event.type == pygame.KEYDOWN:
+                if pygame.K_F1 <= event.key <= pygame.K_F6:
+                    slot_index = event.key - pygame.K_F1
+                    slots = list(player.equipment.slots.keys())
+                    if slot_index < len(slots):
+                        player.toggle_equipment_slot(slots[slot_index])
 
         if not show_menu:
             keys = pygame.key.get_pressed()

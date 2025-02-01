@@ -191,8 +191,12 @@ class Player:
                 
                 # Handle NPC death and loot drops
                 if npc.health <= 0:
+                    if ui_manager:
+                        ui_manager.log_damage(0, f"Defeated {npc.enemy_type}")
+                    
                     # Generate and add loot
                     loot = generate_loot(npc.enemy_type)
+                    
                     for item, quantity in loot:
                         if isinstance(item, str):
                             # Resource item
@@ -200,19 +204,18 @@ class Player:
                                 self.inventory[item] = 0
                             self.inventory[item] += quantity
                             if ui_manager:
-                                ui_manager.log_damage(0, f"Looted {quantity} {item}")
+                                ui_manager.log_damage(0, f"+ {quantity} {item}")
                         else:
                             # Equipment item
                             success, message = self.backpack.add_item(item, quantity)
                             if ui_manager:
-                                ui_manager.log_damage(0, f"Looted {item.name}")
+                                ui_manager.log_damage(0, f"+ {item.name}")
                                 if not success:
                                     ui_manager.log_damage(0, message)
-                
-                # Faction reputation effects
-                if npc.faction == "Scavengers":
-                    self.change_faction_rep("Scavengers", -10)
-                    print(f"Cambiando reputación con Scavengers en -10")
+                    
+                    # Faction reputation effects
+                    if npc.faction == "Scavengers":
+                        self.change_faction_rep("Scavengers", -10)
 
     def change_faction_rep(self, faction_name, amount):
         """
