@@ -1,5 +1,6 @@
 import pygame
 from combat_effects import DamageNumber, HitFlash, AttackAnimation
+from data import generate_loot  # Add loot generation import
 
 class Player:
     """
@@ -45,6 +46,9 @@ class Player:
             "artifact": 5,  # For advanced structures
             "wood": 20     # For new building types
         }
+
+        # Backpack initialization
+        self.backpack = Backpack(max_slots=20)
 
         # Equipment system
         self.equipment = EquipmentManager()
@@ -185,8 +189,28 @@ class Player:
                 if ui_manager:
                     ui_manager.log_damage(damage, f"Player to {npc.__class__.__name__}")
                 
+                # Handle NPC death and loot drops
+                if npc.health <= 0:
+                    # Generate and add loot
+                    loot = generate_loot(npc.enemy_type)
+                    for item, quantity in loot:
+                        if isinstance(item, str):
+                            # Resource item
+                            if item not in self.inventory:
+                                self.inventory[item] = 0
+                            self.inventory[item] += quantity
+                            if ui_manager:
+                                ui_manager.log_damage(0, f"Looted {quantity} {item}")
+                        else:
+                            # Equipment item
+                            success, message = self.backpack.add_item(item, quantity)
+                            if ui_manager:
+                                ui_manager.log_damage(0, f"Looted {item.name}")
+                                if not success:
+                                    ui_manager.log_damage(0, message)
+                
                 # Faction reputation effects
-                if npc.health <= 0 and npc.faction == "Scavengers":
+                if npc.faction == "Scavengers":
                     self.change_faction_rep("Scavengers", -10)
                     print(f"Cambiando reputación con Scavengers en -10")
 
@@ -278,4 +302,35 @@ class EquipmentManager:
             total_multiplier *= multiplier
         
         return total_multiplier
+
+class Backpack:
+    def __init__(self, max_slots=20):
+        self.max_slots = max_slots
+        self.items = []  # List of (item, quantity) tuples
+        
+    def add_item(self, item, quantity=1):
+        """Try to add an item to the backpack"""
+        if len(self.items) >= self.max_slots:
+            return False, "Backpack is full!"
+            
+        # Check if item already exists
+        for i, (existing_item, qty) in enumerate(self.items):
+            if existing_item.name == item.name:
+                self.items[i] = (existing_item, qty + quantity)
+                return True, "Added to existing stack"
+                
+        # Add new item
+        self.items.append((item, quantity))
+        return True, "Item added"
+        
+    def remove_item(self, item_name, quantity=1):
+        """Remove an item from the backpack"""
+        for i, (item, qty) in enumerate(self.items):
+            if item.name == item_name:
+                if qty <= quantity:
+                    self.items.pop(i)
+                else:
+                    self.items[i] = (item, qty - quantity)
+                return True
+        return False
 
