@@ -1,5 +1,4 @@
 import pygame
-from resource import RESOURCE_DATA
 from combat_effects import DamageNumber, HitFlash, AttackAnimation
 
 class Player:
@@ -7,7 +6,9 @@ class Player:
     Player with movement, collisions, health regen, thirst, hunger, 
     heat stroke, inventory, faction rep, attack ability.
     """
-    def __init__(self, x, y):
+    def __init__(self, x, y, weapon_type="knife"):
+        from sprites import create_weapon_sprite, WEAPON_TYPES
+
         self.width = 32
         self.height = 32
         self.speed = 200
@@ -15,6 +16,11 @@ class Player:
 
         self.vx = 0
         self.vy = 0
+
+        # Weapon
+        self.weapon_type = weapon_type
+        self.weapon_sprite = create_weapon_sprite(weapon_type)
+        self.weapon_damage_multiplier = WEAPON_TYPES[weapon_type]['damage_multiplier']
 
         # Stats
         self.max_health = 100
@@ -26,7 +32,7 @@ class Player:
         self.max_hunger = 100
         self.hunger = 100
 
-        # 1) Health Regeneration Rate
+        # Health Regeneration Rate
         self.health_regen_rate = 2.0  # e.g., 2 HP per second if conditions met
 
         # Starting inventory: enough to build a small base
@@ -118,7 +124,7 @@ class Player:
             if self.rect.colliderect(npc.rect) and npc.hostile:
                 self.health -= 10 * dt
 
-        # 2) Health regeneration if thirst/hunger above certain thresholds
+        # Health regeneration if thirst/hunger above certain thresholds
         if self.health < self.max_health:
             if self.thirst > 50 and self.hunger > 50:
                 self.health += self.health_regen_rate * dt
@@ -144,19 +150,15 @@ class Player:
             self.faction_rep[faction] += amount
 
     def attempt_attack(self, npcs, dt, combat_effects=None):
-        """
-        Melee attack with visual effects:
-        - If an NPC is within attack_range, deal attack_damage to them.
-        - Show damage numbers and hit effects
-        """
         attacked = False
         for npc in npcs:
             dist_x = npc.rect.centerx - self.rect.centerx
             dist_y = npc.rect.centery - self.rect.centery
             dist = (dist_x**2 + dist_y**2) ** 0.5
             if dist <= self.attack_range:
-                # Deal damage
-                npc.health -= self.attack_damage
+                # Deal damage with weapon multiplier
+                damage = self.attack_damage * self.weapon_damage_multiplier
+                npc.health -= damage
                 attacked = True
                 
                 # Add visual effects if combat_effects system exists
@@ -164,16 +166,16 @@ class Player:
                     # Damage number
                     combat_effects.add(DamageNumber(
                         npc.rect.centerx, npc.rect.top, 
-                        self.attack_damage
+                        damage
                     ))
                     # Hit flash
                     combat_effects.add(HitFlash(
-                        npc.rect.centerx, npc.rect.centery,
-                        npc.width * 1.5
+                        self.rect.centerx, self.rect.centery,
+                        50  # Adjust size as needed
                     ))
-                    # Attack animation
+                    # Attack animation with weapon
                     combat_effects.add(AttackAnimation(
-                        self.rect, npc.rect
+                        self.rect, npc.rect, self.weapon_sprite
                     ))
                 
                 # Faction reputation effects

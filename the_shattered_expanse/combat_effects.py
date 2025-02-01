@@ -47,11 +47,12 @@ class HitFlash(pygame.sprite.Sprite):
         return self.age < self.lifetime
 
 class AttackAnimation:
-    def __init__(self, attacker_rect, target_rect):
+    def __init__(self, attacker_rect, target_rect, weapon_sprite=None):
         self.start_pos = attacker_rect.center
         self.end_pos = target_rect.center
         self.progress = 0
         self.duration = 0.2  # seconds
+        self.weapon_sprite = weapon_sprite
         
         # Calculate swing arc points
         dx = self.end_pos[0] - self.start_pos[0]
@@ -81,7 +82,14 @@ class AttackAnimation:
             t_trail = max(0, t - i*0.05)
             x_trail = (1-t_trail)**2 * self.start_pos[0] + 2*(1-t_trail)*t_trail * self.mid_point[0] + t_trail**2 * self.end_pos[0]
             y_trail = (1-t_trail)**2 * self.start_pos[1] + 2*(1-t_trail)*t_trail * self.mid_point[1] + t_trail**2 * self.end_pos[1]
-            points.append((x_trail - camera_offset[0], y_trail - camera_offset[1]))
+            points.append((x_trail, y_trail))
             
         if len(points) > 1:
             pygame.draw.lines(screen, (255, 255, 255), False, points, 2)
+        
+        # Draw weapon sprite if available
+        if self.weapon_sprite:
+            # Rotate and position weapon along attack arc
+            rotated_weapon = pygame.transform.rotate(self.weapon_sprite, t * 180)
+            weapon_rect = rotated_weapon.get_rect(center=(x, y))
+            screen.blit(rotated_weapon, weapon_rect)

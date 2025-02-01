@@ -19,6 +19,11 @@ class UIManager:
             "wood": 0,
             "artifact": 0
         }
+        
+        # Damage log for tracking recent damage events
+        self.damage_log = []
+        self.max_damage_log_entries = 5
+        self.damage_log_duration = 3.0  # seconds
 
     def draw_hud(self, screen, player, factions, build_mode, day_cycle):
         # Health/Thirst/Hunger bars
@@ -31,6 +36,9 @@ class UIManager:
         pygame.draw.rect(screen, (255, 0, 0),
                          (x_offset, y_offset, int(bar_width*health_ratio), 8))
         pygame.draw.rect(screen, (255, 255, 255), (x_offset, y_offset, bar_width, 8), 1)
+
+        # Draw damage log
+        self.draw_damage_log(screen, x_offset, y_offset + 90)
 
         # Thirst
         thirst_ratio = player.thirst / player.max_thirst
@@ -78,6 +86,36 @@ class UIManager:
         # Show time-of-day
         time_surf = self.font.render(f"Time: {day_cycle:.1f}h", True, (255,255,255))
         screen.blit(time_surf, (x_offset, y_offset+80))
+
+    def log_damage(self, damage, source):
+        """Log a damage event"""
+        current_time = pygame.time.get_ticks() / 1000.0
+        self.damage_log.append({
+            'damage': damage,
+            'source': source,
+            'time': current_time
+        })
+        
+        # Trim log if it gets too long
+        if len(self.damage_log) > self.max_damage_log_entries:
+            self.damage_log.pop(0)
+
+    def draw_damage_log(self, screen, x, y):
+        """Draw recent damage events"""
+        current_time = pygame.time.get_ticks() / 1000.0
+        
+        # Remove old entries
+        self.damage_log = [
+            entry for entry in self.damage_log 
+            if current_time - entry['time'] < self.damage_log_duration
+        ]
+        
+        # Draw remaining entries
+        for i, entry in enumerate(self.damage_log):
+            color = (255, 0, 0) if entry['damage'] > 0 else (0, 255, 0)
+            damage_text = f"{entry['source']}: {entry['damage']:.1f}"
+            damage_surf = self.font.render(damage_text, True, color)
+            screen.blit(damage_surf, (x, y + i * 15))
 
     def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system, lore_system, cities):
         """
@@ -180,3 +218,19 @@ class GameMenu:
 
         options_text = self.font.render("Press ESC to return", True, (255, 255, 255))
         screen.blit(options_text, (self.screen_width // 2 - options_text.get_width() // 2, self.screen_height // 2))
+
+        # Add game functions and controls
+        controls = [
+            "Controls:",
+            "W/A/S/D - Move Up/Left/Down/Right",
+            "SPACE - Attack",
+            "E - Collect Resources",
+            "B - Toggle Build Mode",
+            "ESC - Open/Close Menu",
+            "C - Open Crafting Menu",
+            "1-6 - Select Building Type (in Build Mode)"
+        ]
+
+        for i, line in enumerate(controls):
+            control_text = self.font.render(line, True, (255, 255, 255))
+            screen.blit(control_text, (self.screen_width // 2 - control_text.get_width() // 2, self.screen_height // 2 + 20 + i * 20))

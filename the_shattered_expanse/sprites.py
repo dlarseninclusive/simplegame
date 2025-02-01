@@ -1,6 +1,38 @@
 import pygame
 import math
 
+# Define weapon types and characteristics
+WEAPON_TYPES = {
+    "knife": {
+        "color": (128, 128, 128),  # Gray
+        "length": 20,
+        "width": 5,
+        "damage_multiplier": 1.0
+    },
+    "machete": {
+        "color": (169, 169, 169),  # Dark Gray
+        "length": 30,
+        "width": 7,
+        "damage_multiplier": 1.5
+    },
+    "crowbar": {
+        "color": (139, 69, 19),    # Brown
+        "length": 35,
+        "width": 6,
+        "damage_multiplier": 1.2
+    }
+}
+
+def create_weapon_sprite(weapon_type):
+    """Create a weapon sprite based on type"""
+    weapon_info = WEAPON_TYPES[weapon_type]
+    surface = pygame.Surface((weapon_info['length'], weapon_info['width']), pygame.SRCALPHA)
+    pygame.draw.line(surface, weapon_info['color'], 
+                     (0, weapon_info['width']//2), 
+                     (weapon_info['length'], weapon_info['width']//2), 
+                     weapon_info['width'])
+    return surface
+
 # Define colors for different enemy types
 ENEMY_COLORS = {
     "scout": (255, 165, 0),     # Orange
