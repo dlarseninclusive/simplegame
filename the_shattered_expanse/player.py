@@ -8,6 +8,8 @@ class Player:
     """
     def __init__(self, x, y, weapon_type="knife"):
         from sprites import create_weapon_sprite, WEAPON_TYPES
+        from data import EQUIPMENT_DATA
+        from item import Item
 
         self.width = 32
         self.height = 32
@@ -44,6 +46,18 @@ class Player:
             "wood": 20     # For new building types
         }
 
+        # Equipment system
+        self.equipment = EquipmentManager()
+
+        # Add some starting equipment
+        starter_sword = Item("Rusty Sword", "weapon", 
+                           EQUIPMENT_DATA["rusty_sword"]["stats"])
+        starter_armor = Item("Scrap Metal Armor", "chest", 
+                           EQUIPMENT_DATA["scrap_armor"]["stats"])
+        
+        self.equipment.equip_item(starter_sword)
+        self.equipment.equip_item(starter_armor)
+
         # Faction reputation
         self.faction_rep = {
             "Automatons": 0,
@@ -54,6 +68,56 @@ class Player:
         # For a simple melee attack, define range and damage
         self.attack_range = 50
         self.attack_damage = 50
+
+class EquipmentManager:
+    def __init__(self):
+        self.slots = {
+            "weapon": None,
+            "chest": None,
+            "head": None,
+            "legs": None,
+            "feet": None,
+            "offhand": None
+        }
+
+    def equip_item(self, item):
+        """Equip an item to its appropriate slot"""
+        if item.type in self.slots:
+            self.slots[item.type] = item
+        else:
+            raise ValueError(f"Invalid equipment type: {item.type}")
+
+    def unequip_item(self, slot):
+        """Unequip an item from a specific slot"""
+        if slot in self.slots:
+            item = self.slots[slot]
+            self.slots[slot] = None
+            return item
+        else:
+            raise ValueError(f"Invalid equipment slot: {slot}")
+
+    def get_total_armor(self):
+        """Calculate total armor from equipped items"""
+        return sum(
+            item.get_stat('armor', 0) 
+            for item in self.slots.values() 
+            if item is not None
+        )
+
+    def get_speed_multiplier(self):
+        """Calculate speed multiplier from equipped items"""
+        speed_multipliers = [
+            item.get_stat('speed', 1.0) 
+            for item in self.slots.values() 
+            if item is not None
+        ]
+        
+        # Multiply all speed multipliers
+        total_multiplier = 1.0
+        for multiplier in speed_multipliers:
+            total_multiplier *= multiplier
+        
+        return total_multiplier
 
     def add_item(self, item_type, quantity=1):
         """Add an item to the inventory"""

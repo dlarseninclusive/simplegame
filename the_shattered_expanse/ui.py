@@ -87,8 +87,9 @@ class UIManager:
         time_surf = self.font.render(f"Time: {day_cycle:.1f}h", True, (255,255,255))
         screen.blit(time_surf, (x_offset, y_offset+80))
 
-        # Draw inventory
+        # Draw inventory and equipment
         self.draw_inventory(screen, player)
+        self.draw_equipment(screen, player)
 
     def draw_inventory(self, screen, player):
         """Draw a detailed inventory display"""
@@ -104,6 +105,52 @@ class UIManager:
         for i, (item, quantity) in enumerate(player.inventory.items()):
             item_text = inventory_font.render(f"{item.capitalize()}: {quantity}", True, (200, 200, 200))
             screen.blit(item_text, (x_offset, y_offset + 30 + i * 25))
+
+    def draw_equipment(self, screen, player):
+        """Draw equipment slots and equipped items"""
+        # Equipment panel background
+        panel_width = 200
+        panel_height = 300
+        panel_x = self.screen_width - panel_width - 170  # Left of inventory
+        panel_y = self.screen_height - panel_height - 10
+        
+        pygame.draw.rect(screen, (40, 40, 40), 
+                        (panel_x, panel_y, panel_width, panel_height))
+        pygame.draw.rect(screen, (100, 100, 100), 
+                        (panel_x, panel_y, panel_width, panel_height), 2)
+
+        # Title
+        title = self.font.render("Equipment", True, (255, 255, 255))
+        screen.blit(title, (panel_x + 10, panel_y + 10))
+
+        # Draw equipment slots
+        slot_size = 40
+        slot_padding = 10
+        slots_start_y = panel_y + 40
+
+        for i, (slot_name, item) in enumerate(player.equipment.slots.items()):
+            slot_x = panel_x + 10
+            slot_y = slots_start_y + (slot_size + slot_padding) * i
+            
+            # Draw slot background
+            pygame.draw.rect(screen, (60, 60, 60), 
+                           (slot_x, slot_y, slot_size, slot_size))
+            pygame.draw.rect(screen, (120, 120, 120), 
+                           (slot_x, slot_y, slot_size, slot_size), 1)
+            
+            # Draw slot label
+            label = self.font.render(slot_name.capitalize(), True, (200, 200, 200))
+            screen.blit(label, (slot_x + slot_size + 10, slot_y + slot_size//2 - 8))
+            
+            # Draw equipped item name if any
+            if item:
+                item_name = self.font.render(item.name, True, (255, 255, 255))
+                screen.blit(item_name, (slot_x + slot_size + 80, slot_y + slot_size//2 - 8))
+
+        # Draw total armor value
+        armor_text = self.font.render(f"Total Armor: {player.equipment.get_total_armor()}", 
+                                    True, (200, 200, 200))
+        screen.blit(armor_text, (panel_x + 10, panel_y + panel_height - 30))
 
     def log_damage(self, damage, source):
         """Log a damage event"""
