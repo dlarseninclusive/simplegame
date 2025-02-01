@@ -9,6 +9,44 @@ class NPC:
     Basic NPC that can wander, chase the player if hostile,
     or use pathfinding. Group ID can allow group behavior.
     """
+    def interact(self, player):
+        """
+        Interact with the player, generating context-specific dialogue
+        """
+        # Basic relationship determination
+        dist = ((player.rect.centerx - self.rect.centerx)**2 + 
+                (player.rect.centery - self.rect.centery)**2)**0.5
+        
+        # Determine basic relationship status
+        if dist < 50:
+            status = "friendly"
+        elif dist < 100:
+            status = "neutral"
+        else:
+            status = "hostile"
+        
+        # Generate a basic dialogue with more flavor
+        dialogues = {
+            "Scavengers": [
+                f"Scavenger says: We're always looking for resources. Our relationship is {status}.",
+                f"Scavenger mutters: Survival is tough out here. Feeling {status} today.",
+                f"Scavenger nods: Trade might be possible if you're {status}."
+            ],
+            "Automatons": [
+                f"Automaton beeps: Efficiency protocols detect {status} interaction.",
+                f"Automaton chirps: Calculating social parameters. Current status: {status}.",
+                f"Automaton whirrs: Interaction mode: {status}."
+            ],
+            "Cog Preachers": [
+                f"Cog Preacher intones: The machine spirit sees you as {status}.",
+                f"Cog Preacher whispers: Our paths cross under divine machinery.",
+                f"Cog Preacher declares: Your standing is {status} in the eyes of the Cog."
+            ]
+        }
+        
+        # Randomly select a dialogue for the faction
+        faction_dialogues = dialogues.get(self.faction, dialogues["Scavengers"])
+        return random.choice(faction_dialogues)
     def __init__(self, x, y, faction="Scavengers", group_id=None, enemy_type="warrior", spawn_region="south"):
         self.spawn_region = spawn_region
         self.enemy_type = enemy_type

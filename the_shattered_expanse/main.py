@@ -110,6 +110,10 @@ def main():
     day_cycle = 0.0
     heat_stroke_threshold = 12.0
 
+    current_dialog = None
+    dialog_timer = 0
+    DIALOG_DURATION = 3.0  # seconds dialog stays on screen
+
     running = True
     while running:
         dt = clock.tick(FPS) / 1000.0
@@ -133,6 +137,17 @@ def main():
                 # 4) Attack key: space bar => attempt to attack NPCs
                 if event.key == pygame.K_SPACE:
                     player.attempt_attack(npcs, dt, combat_effects, ui_manager)
+                
+                # NPC Interaction
+                if event.key == pygame.K_f:
+                    for npc in npcs:
+                        # Check if player is close to NPC
+                        dist = ((player.rect.centerx - npc.rect.centerx)**2 + 
+                                (player.rect.centery - npc.rect.centery)**2)**0.5
+                        if dist < 100:  # Interaction range
+                            current_dialog = npc.interact(player)
+                            dialog_timer = DIALOG_DURATION
+                            break  # Interact with only one NPC at a time
 
             # Building controls
             if build_mode:
@@ -313,6 +328,13 @@ def main():
                     effect.draw(screen, (camera.offset_x, camera.offset_y))
                 else:
                     combat_effects.remove(effect)
+        
+        # Dialog rendering
+        if current_dialog and dialog_timer > 0:
+            ui_manager.draw_npc_dialog(screen, current_dialog)
+            dialog_timer -= dt
+            if dialog_timer <= 0:
+                current_dialog = None
         
         # Build mode cursor and power grid visualization
         if build_mode:

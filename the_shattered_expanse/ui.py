@@ -146,75 +146,25 @@ class UIManager:
         minimap_y = 10
         pygame.draw.rect(screen, (20,20,20), (minimap_x, minimap_y, map_width, map_height))
 
-        # scale factor for 4000x4000 world
-        scale_x = map_width / 4000
-        scale_y = map_height / 4000
-
-        # Draw obstacles
-        for obs in obstacles:
-            ox = int(obs.x * scale_x)
-            oy = int(obs.y * scale_y)
-            ow = max(1, int(obs.width * scale_x))
-            oh = max(1, int(obs.height * scale_y))
-            pygame.draw.rect(
-                screen, (0,128,0),
-                (minimap_x+ox, minimap_y+oy, ow, oh)
-            )
-
-        # Draw cities
-        for faction, buildings in cities.items():
-            for city in buildings:
-                cx = int(city.rect.x * scale_x)
-                cy = int(city.rect.y * scale_y)
-                cw = max(1, int(city.rect.width * scale_x))
-                ch = max(1, int(city.rect.height * scale_y))
-                pygame.draw.rect(screen, (255, 215, 0),  # Gold color for cities
-                                 (minimap_x+cx, minimap_y+cy, cw, ch))
-
-        # Draw NPCs
-        for npc in npcs:
-            nx = int(npc.rect.x * scale_x)
-            ny = int(npc.rect.y * scale_y)
-            pygame.draw.rect(screen, (100,100,100),
-                             (minimap_x+nx, minimap_y+ny, 2, 2))
-
-        # Draw buildings
-        for bld in building_system.structures:
-            bx = int(bld.x * scale_x)
-            by = int(bld.y * scale_y)
-            bw = max(1, int(bld.width * scale_x))
-            bh = max(1, int(bld.height * scale_y))
-            
-            # Different colors for different building types
-            if bld.structure_type == "Generator":
-                color = (255, 140, 0)  # Orange
-            elif bld.structure_type == "Storage":
-                color = (139, 69, 19)  # Brown
-            elif bld.structure_type == "Workshop":
-                color = (105, 105, 105)  # Gray
-            elif bld.structure_type == "Collector":
-                color = (46, 139, 87)  # Sea green
-            else:
-                color = (139, 69, 19)  # Default brown
-                
-            pygame.draw.rect(screen, color,
-                           (minimap_x+bx, minimap_y+by, bw, bh))
-
-        # Draw player
-        px = int(player.rect.x * scale_x)
-        py = int(player.rect.y * scale_y)
-        pygame.draw.rect(screen, (200,0,0),
-                         (minimap_x+px, minimap_y+py, 3, 3))
-
-        # Render Lore Fragments
-        if lore_system:
-            for fragment in lore_system.fragments:
-                fragment.render(screen, (camera.offset_x, camera.offset_y))
-
-            # Check for Lore Fragment Discovery
-            discovered_fragment = lore_system.discover_fragment(player)
-            if discovered_fragment:
-                lore_system.render_discovered_fragments(screen, self.font, (camera.offset_x, camera.offset_y))
+    def draw_npc_dialog(self, screen, dialog_text, font_size=24):
+        """
+        Draw a dialog box for NPC interactions at the bottom of the screen.
+        """
+        # Create a semi-transparent dialog box
+        dialog_surface = pygame.Surface((self.screen_width, 150), pygame.SRCALPHA)
+        dialog_surface.fill((0, 0, 0, 128))  # Semi-transparent black
+        
+        # Position at bottom of screen
+        screen_height = screen.get_height()
+        screen.blit(dialog_surface, (0, screen_height - 150))
+        
+        # Render dialog text
+        dialog_font = pygame.font.Font(None, font_size)
+        text_surface = dialog_font.render(dialog_text, True, (255, 255, 255))
+        
+        # Center the text in the dialog box
+        text_rect = text_surface.get_rect(center=(self.screen_width//2, screen_height - 75))
+        screen.blit(text_surface, text_rect)
 
 class GameMenu:
     """
@@ -243,6 +193,7 @@ class GameMenu:
             "Combat & Interaction:",
             "SPACE - Attack",
             "E - Collect Resources",
+            "F - Interact with NPCs",
             "",
             "Building & Construction:",
             "B - Toggle Build Mode",
@@ -257,6 +208,10 @@ class GameMenu:
             "",
             "Game Management:",
             "ESC - Open/Close Menu",
+            "",
+            "Faction & Quests:",
+            "Check Faction Reputation in HUD",
+            "Complete Quests by Collecting Items",
             "",
             "Press ESC to return to game"
         ]
