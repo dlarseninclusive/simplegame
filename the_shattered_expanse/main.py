@@ -136,6 +136,8 @@ def main():
                     crafting_system.open_crafting_menu(player)
                 if event.key == pygame.K_TAB:
                     ui_manager.toggle_equipment_display()
+                if event.key == pygame.K_m:  # Add minimap toggle
+                    ui_manager.toggle_minimap()
                 # Equipment hotkeys
                 if pygame.K_F1 <= event.key <= pygame.K_F6:
                     slot_index = event.key - pygame.K_F1

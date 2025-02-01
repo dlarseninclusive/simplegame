@@ -10,7 +10,8 @@ class UIManager:
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.font = pygame.font.SysFont(None, 20)
-        self.show_equipment = False  # Add this line
+        self.show_equipment = False
+        self.show_minimap = True  # Add this line
         
         # Separate status bar resources from inventory
         self.status_resources = {
@@ -157,6 +158,10 @@ class UIManager:
         """Toggle the visibility of the equipment panel"""
         self.show_equipment = not self.show_equipment
 
+    def toggle_minimap(self):
+        """Toggle minimap visibility"""
+        self.show_minimap = not self.show_minimap
+
     def log_damage(self, damage, source):
         """Log a damage event"""
         current_time = pygame.time.get_ticks() / 1000.0
@@ -191,6 +196,9 @@ class UIManager:
         """
         A simple top-right corner minimap. We just scale down by some factor.
         """
+        if not self.show_minimap:
+            return
+        
         map_width = 150
         map_height = 150
         minimap_x = self.screen_width - map_width - 10
@@ -317,7 +325,8 @@ class GameMenu:
             "F1-F6 - Toggle Equipment Slots",
             "C - Open Crafting Menu",
             "",
-            "Game Management:",
+            "Interface:",
+            "M - Toggle Minimap",
             "ESC - Open/Close Menu",
             "",
             "Faction & Quests:",
