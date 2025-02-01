@@ -79,7 +79,7 @@ class UIManager:
         time_surf = self.font.render(f"Time: {day_cycle:.1f}h", True, (255,255,255))
         screen.blit(time_surf, (x_offset, y_offset+80))
 
-    def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system, lore_system):
+    def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system, lore_system, cities):
         """
         A simple top-right corner minimap. We just scale down by some factor.
         Requires lore_system to be passed in to render lore fragments.
@@ -104,6 +104,15 @@ class UIManager:
                 screen, (0,128,0),
                 (minimap_x+ox, minimap_y+oy, ow, oh)
             )
+
+        # Draw cities
+        for city in cities:
+            cx = int(city.rect.x * scale_x)
+            cy = int(city.rect.y * scale_y)
+            cw = max(1, int(city.rect.width * scale_x))
+            ch = max(1, int(city.rect.height * scale_y))
+            pygame.draw.rect(screen, (255, 215, 0),  # Gold color for cities
+                             (minimap_x+cx, minimap_y+cy, cw, ch))
 
         # Draw NPCs
         for npc in npcs:

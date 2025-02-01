@@ -1,6 +1,5 @@
 # environment.py
 import pygame
-
 import random
 
 class Environment:
