@@ -106,13 +106,14 @@ class UIManager:
             )
 
         # Draw cities
-        for city in cities:
-            cx = int(city.rect.x * scale_x)
-            cy = int(city.rect.y * scale_y)
-            cw = max(1, int(city.rect.width * scale_x))
-            ch = max(1, int(city.rect.height * scale_y))
-            pygame.draw.rect(screen, (255, 215, 0),  # Gold color for cities
-                             (minimap_x+cx, minimap_y+cy, cw, ch))
+        for faction, buildings in cities.items():
+            for city in buildings:
+                cx = int(city.rect.x * scale_x)
+                cy = int(city.rect.y * scale_y)
+                cw = max(1, int(city.rect.width * scale_x))
+                ch = max(1, int(city.rect.height * scale_y))
+                pygame.draw.rect(screen, (255, 215, 0),  # Gold color for cities
+                                 (minimap_x+cx, minimap_y+cy, cw, ch))
 
         # Draw NPCs
         for npc in npcs:
@@ -161,34 +162,21 @@ class UIManager:
 
 class GameMenu:
     """
-    A placeholder for a pause menu or in-game menu.
+    Simple game menu class for pausing and displaying options.
     """
     def __init__(self, screen_width, screen_height):
-        self.width = screen_width
-        self.height = screen_height
-        self.font = pygame.font.SysFont(None, 36)
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.font = pygame.font.SysFont(None, 40)
 
     def draw_menu(self, screen):
-        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))  # semi-transparent dark
-        screen.blit(overlay, (0,0))
+        menu_surface = pygame.Surface((self.screen_width, self.screen_height))
+        menu_surface.set_alpha(128)  # Semi-transparent
+        menu_surface.fill((0, 0, 0))
+        screen.blit(menu_surface, (0, 0))
 
-        controls = [
-            "Movement: WASD",
-            "Build Mode: B",
-            "Collect Resource: E",
-            "Attack: Spacebar",
-            "Crafting Menu: C",
-            "Upgrade Structure: U (in build mode)",
-            "Repair Structure: H (in build mode)",
-            "Reclaim Structure: Right-Click (in build mode)",
-            "Place Structures: 1-6 (in build mode)",
-            "Pause/Resume: ESC"
-        ]
+        title_text = self.font.render("Game Menu", True, (255, 255, 255))
+        screen.blit(title_text, (self.screen_width // 2 - title_text.get_width() // 2, self.screen_height // 2 - 50))
 
-        title = self.font.render("Game Paused - ESC to Resume", True, (255, 255, 255))
-        screen.blit(title, (self.width//2 - title.get_width()//2, 100))
-
-        for i, control in enumerate(controls):
-            text = pygame.font.SysFont(None, 24).render(control, True, (200, 200, 200))
-            screen.blit(text, (self.width//2 - text.get_width()//2, 200 + i*30))
+        options_text = self.font.render("Press ESC to return", True, (255, 255, 255))
+        screen.blit(options_text, (self.screen_width // 2 - options_text.get_width() // 2, self.screen_height // 2))

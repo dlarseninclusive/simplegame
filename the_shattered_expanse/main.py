@@ -80,7 +80,7 @@ def main():
     city_npcs = {}
     city_resources = {}
     for faction in ["Automatons", "Scavengers", "Cog Preachers"]:
-        city_buildings[faction] = city_generator.generate_city_buildings(faction)
+        city_buildings[faction] = city_generator.generate_city_buildings(faction, environment)  # Pass environment
         city_npcs[faction] = city_generator.generate_city_npcs(faction)
         city_resources[faction] = city_generator.generate_city_resources(faction)
 
@@ -364,7 +364,7 @@ def main():
             screen.blit(text_surface, (mx+25, my-10))
 
         ui_manager.draw_hud(screen, player, factions, build_mode, day_cycle)
-        ui_manager.draw_minimap(screen, player, npcs, environment.obstacles, camera, building_system, lore_system)
+        ui_manager.draw_minimap(screen, player, npcs, environment.obstacles, camera, building_system, lore_system, city_buildings)  # Pass city_buildings
 
         if show_menu:
             game_menu.draw_menu(screen)

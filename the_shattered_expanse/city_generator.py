@@ -1,6 +1,8 @@
 import pygame
 import random
 import math
+from npc import NPC  # Import NPC class
+from resource import ResourceNode  # Import ResourceNode class
 
 class CityGenerator:
     """
@@ -138,5 +140,48 @@ class CityGenerator:
                     environment.add_obstacle(bx, by, building_size, building_size)  # Add to environment obstacles
         
         return buildings
+
+    def generate_city_npcs(self, faction_name):
+        """
+        Generate NPCs for a specific faction.
+        
+        :param faction_name: Name of the faction to generate NPCs for
+        :return: List of NPCs
+        """
+        npcs = []
+        faction_config = self.building_types.get(faction_name, {})
+        
+        if not faction_config:
+            return npcs
+
+        npc_types = faction_config.get("npc_types", [])
+        for _ in range(random.randint(5, 15)):  # Random number of NPCs per city
+            npc_type = random.choice(npc_types)
+            npc = NPC(random.randint(0, self.world_width), random.randint(0, self.world_height), faction=faction_name, enemy_type=npc_type)
+            npcs.append(npc)
+        
+        return npcs
+
+    def generate_city_resources(self, faction_name):
+        """
+        Generate resources for a specific faction.
+        
+        :param faction_name: Name of the faction to generate resources for
+        :return: List of resource nodes
+        """
+        resources = []
+        faction_config = self.building_types.get(faction_name, {})
+        
+        if not faction_config:
+            return resources
+
+        resource_bias = faction_config.get("resource_bias", {})
+        for resource_type, bias in resource_bias.items():
+            if random.random() < bias:
+                x = random.randint(0, self.world_width)
+                y = random.randint(0, self.world_height)
+                resources.append(ResourceNode(x, y, 40, 40, resource_type))
+        
+        return resources
 
     # Other methods remain unchanged...
