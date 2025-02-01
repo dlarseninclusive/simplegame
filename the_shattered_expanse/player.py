@@ -44,6 +44,7 @@ class Player:
             "wood": 20     # For new building types
         }
 
+        # Faction reputation
         self.faction_rep = {
             "Automatons": 0,
             "Scavengers": 0,
@@ -53,6 +54,43 @@ class Player:
         # For a simple melee attack, define range and damage
         self.attack_range = 50
         self.attack_damage = 50
+
+    def add_item(self, item_type, quantity=1):
+        """Add an item to the inventory"""
+        if item_type not in self.inventory:
+            self.inventory[item_type] = 0
+        self.inventory[item_type] += quantity
+
+    def remove_item(self, item_type, quantity=1):
+        """Remove an item from the inventory"""
+        if item_type in self.inventory:
+            self.inventory[item_type] = max(0, self.inventory[item_type] - quantity)
+            if self.inventory[item_type] == 0:
+                del self.inventory[item_type]
+
+    def get_item_quantity(self, item_type):
+        """Get the quantity of a specific item"""
+        return self.inventory.get(item_type, 0)
+
+    def has_item(self, item_type, quantity=1):
+        """Check if player has a specific item and quantity"""
+        return self.get_item_quantity(item_type) >= quantity
+
+        self.faction_rep = {
+            "Automatons": 0,
+            "Scavengers": 0,
+            "Cog Preachers": 0
+        }
+
+        # For a simple melee attack, define range and damage
+        self.attack_range = 50
+        self.attack_damage = 50
+
+        self.faction_rep = {
+            "Automatons": 0,
+            "Scavengers": 0,
+            "Cog Preachers": 0
+        }
 
     def handle_input(self, dt):
         keys = pygame.key.get_pressed()

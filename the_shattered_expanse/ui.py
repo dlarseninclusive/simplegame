@@ -87,6 +87,24 @@ class UIManager:
         time_surf = self.font.render(f"Time: {day_cycle:.1f}h", True, (255,255,255))
         screen.blit(time_surf, (x_offset, y_offset+80))
 
+        # Draw inventory
+        self.draw_inventory(screen, player)
+
+    def draw_inventory(self, screen, player):
+        """Draw a detailed inventory display"""
+        inventory_font = pygame.font.Font(None, 24)
+        y_offset = self.screen_height - 150  # Bottom of screen
+        x_offset = 10
+        
+        # Inventory title
+        title = inventory_font.render("Inventory:", True, (255, 255, 255))
+        screen.blit(title, (x_offset, y_offset))
+        
+        # Render inventory items
+        for i, (item, quantity) in enumerate(player.inventory.items()):
+            item_text = inventory_font.render(f"{item.capitalize()}: {quantity}", True, (200, 200, 200))
+            screen.blit(item_text, (x_offset, y_offset + 30 + i * 25))
+
     def log_damage(self, damage, source):
         """Log a damage event"""
         current_time = pygame.time.get_ticks() / 1000.0
@@ -206,6 +224,7 @@ class GameMenu:
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.font = pygame.font.SysFont(None, 40)
+        self.small_font = pygame.font.SysFont(None, 24)
 
     def draw_menu(self, screen):
         menu_surface = pygame.Surface((self.screen_width, self.screen_height))
@@ -214,23 +233,51 @@ class GameMenu:
         screen.blit(menu_surface, (0, 0))
 
         title_text = self.font.render("Game Menu", True, (255, 255, 255))
-        screen.blit(title_text, (self.screen_width // 2 - title_text.get_width() // 2, self.screen_height // 2 - 50))
+        screen.blit(title_text, (self.screen_width // 2 - title_text.get_width() // 2, 50))
 
-        options_text = self.font.render("Press ESC to return", True, (255, 255, 255))
-        screen.blit(options_text, (self.screen_width // 2 - options_text.get_width() // 2, self.screen_height // 2))
-
-        # Add game functions and controls
+        # Comprehensive controls list
         controls = [
-            "Controls:",
+            "Movement:",
             "W/A/S/D - Move Up/Left/Down/Right",
+            "",
+            "Combat & Interaction:",
             "SPACE - Attack",
             "E - Collect Resources",
+            "",
+            "Building & Construction:",
             "B - Toggle Build Mode",
-            "ESC - Open/Close Menu",
+            "1-6 - Select Building Type",
+            "Left Click - Place Building",
+            "Right Click - Reclaim Building",
+            "U - Upgrade Structure",
+            "H - Repair Structure",
+            "",
+            "Inventory & Crafting:",
             "C - Open Crafting Menu",
-            "1-6 - Select Building Type (in Build Mode)"
+            "",
+            "Game Management:",
+            "ESC - Open/Close Menu",
+            "",
+            "Press ESC to return to game"
         ]
 
         for i, line in enumerate(controls):
-            control_text = self.font.render(line, True, (255, 255, 255))
-            screen.blit(control_text, (self.screen_width // 2 - control_text.get_width() // 2, self.screen_height // 2 + 20 + i * 20))
+            if line:
+                # Differentiate between section headers and control descriptions
+                if line.endswith(':'):
+                    text_color = (255, 215, 0)  # Gold for headers
+                    font = self.font
+                else:
+                    text_color = (200, 200, 200)  # Gray for descriptions
+                    font = self.small_font
+            else:
+                # Skip empty lines
+                continue
+
+            control_text = font.render(line, True, text_color)
+            screen.blit(control_text, (
+                self.screen_width // 2 - control_text.get_width() // 2, 
+                150 + i * 25
+            ))
+
+        pygame.display.flip()
