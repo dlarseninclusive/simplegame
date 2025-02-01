@@ -69,95 +69,11 @@ class Player:
         self.attack_range = 50
         self.attack_damage = 50
 
-class EquipmentManager:
-    def __init__(self):
-        self.slots = {
-            "weapon": None,
-            "chest": None,
-            "head": None,
-            "legs": None,
-            "feet": None,
-            "offhand": None
-        }
-
-    def equip_item(self, item):
-        """Equip an item to its appropriate slot"""
-        if item.type in self.slots:
-            self.slots[item.type] = item
-        else:
-            raise ValueError(f"Invalid equipment type: {item.type}")
-
-    def unequip_item(self, slot):
-        """Unequip an item from a specific slot"""
-        if slot in self.slots:
-            item = self.slots[slot]
-            self.slots[slot] = None
-            return item
-        else:
-            raise ValueError(f"Invalid equipment slot: {slot}")
-
-    def get_total_armor(self):
-        """Calculate total armor from equipped items"""
-        return sum(
-            item.get_stat('armor', 0) 
-            for item in self.slots.values() 
-            if item is not None
-        )
-
-    def get_speed_multiplier(self):
-        """Calculate speed multiplier from equipped items"""
-        speed_multipliers = [
-            item.get_stat('speed', 1.0) 
-            for item in self.slots.values() 
-            if item is not None
-        ]
-        
-        # Multiply all speed multipliers
-        total_multiplier = 1.0
-        for multiplier in speed_multipliers:
-            total_multiplier *= multiplier
-        
-        return total_multiplier
-
-    def add_item(self, item_type, quantity=1):
-        """Add an item to the inventory"""
-        if item_type not in self.inventory:
-            self.inventory[item_type] = 0
-        self.inventory[item_type] += quantity
-
-    def remove_item(self, item_type, quantity=1):
-        """Remove an item from the inventory"""
-        if item_type in self.inventory:
-            self.inventory[item_type] = max(0, self.inventory[item_type] - quantity)
-            if self.inventory[item_type] == 0:
-                del self.inventory[item_type]
-
-    def get_item_quantity(self, item_type):
-        """Get the quantity of a specific item"""
-        return self.inventory.get(item_type, 0)
-
-    def has_item(self, item_type, quantity=1):
-        """Check if player has a specific item and quantity"""
-        return self.get_item_quantity(item_type) >= quantity
-
-        self.faction_rep = {
-            "Automatons": 0,
-            "Scavengers": 0,
-            "Cog Preachers": 0
-        }
-
-        # For a simple melee attack, define range and damage
-        self.attack_range = 50
-        self.attack_damage = 50
-
-        self.faction_rep = {
-            "Automatons": 0,
-            "Scavengers": 0,
-            "Cog Preachers": 0
-        }
-
     def handle_input(self, dt):
+        """Handle keyboard input for player movement"""
         keys = pygame.key.get_pressed()
+        
+        # Movement handling
         self.vx = 0
         self.vy = 0
         if keys[pygame.K_a]:
@@ -236,21 +152,6 @@ class EquipmentManager:
         if self.health < 0:
             self.health = 0
 
-    def collect_resource(self, resource_node):
-        rtype = resource_node.resource_type
-        self.inventory[rtype] += 1
-
-        data = resource_node.data
-        thirst_recov = data.get("thirst_recovery", 0)
-        hunger_recov = data.get("hunger_recovery", 0)
-
-        self.thirst = min(self.thirst + thirst_recov, self.max_thirst)
-        self.hunger = min(self.hunger + hunger_recov, self.max_hunger)
-
-    def change_faction_rep(self, faction, amount):
-        if faction in self.faction_rep:
-            self.faction_rep[faction] += amount
-
     def attempt_attack(self, npcs, dt, combat_effects=None, ui_manager=None):
         attacked = False
         for npc in npcs:
@@ -287,3 +188,94 @@ class EquipmentManager:
                 # Faction reputation effects
                 if npc.health <= 0 and npc.faction == "Scavengers":
                     self.change_faction_rep("Scavengers", -10)
+                    print(f"Cambiando reputación con Scavengers en -10")
+
+    def change_faction_rep(self, faction_name, amount):
+        """
+        Change reputation with a specific faction
+        Args:
+            faction_name (str): Name of the faction
+            amount (int): Amount to change reputation by (positive or negative)
+        """
+        if faction_name in self.faction_rep:
+            self.faction_rep[faction_name] = max(-100, min(100, self.faction_rep[faction_name] + amount))
+
+    def toggle_equipment_slot(self, slot_name):
+        """
+        Toggle equipment in a specific slot (equip/unequip)
+        Args:
+            slot_name (str): Name of the slot to toggle ("weapon", "chest", "head", "legs", "feet", "offhand")
+        Returns:
+            Item or None: The unequipped item if one was removed, None if slot was empty
+        """
+        if slot_name in self.equipment.slots:
+            return self.equipment.unequip_item(slot_name)
+        return None
+
+    def collect_resource(self, resource_node):
+        """Collect resources from a node"""
+        rtype = resource_node.resource_type
+        amount = 1  # Default amount if not specified
+        
+        # Initialize inventory key if it doesn't exist
+        if rtype not in self.inventory:
+            self.inventory[rtype] = 0
+        
+        self.inventory[rtype] += amount
+        
+        # Handle consumable effects
+        if rtype == "water":
+            self.thirst = min(self.thirst + 20, self.max_thirst)
+        elif rtype == "food":
+            self.hunger = min(self.hunger + 30, self.max_hunger)
+
+class EquipmentManager:
+    def __init__(self):
+        self.slots = {
+            "weapon": None,
+            "chest": None,
+            "head": None,
+            "legs": None,
+            "feet": None,
+            "offhand": None
+        }
+
+    def equip_item(self, item):
+        """Equip an item to its appropriate slot"""
+        if item.type in self.slots:
+            self.slots[item.type] = item
+        else:
+            raise ValueError(f"Invalid equipment type: {item.type}")
+
+    def unequip_item(self, slot):
+        """Unequip an item from a specific slot"""
+        if slot in self.slots:
+            item = self.slots[slot]
+            self.slots[slot] = None
+            return item
+        else:
+            raise ValueError(f"Invalid equipment slot: {slot}")
+
+    def get_total_armor(self):
+        """Calculate total armor from equipped items"""
+        return sum(
+            item.get_stat('armor', 0) 
+            for item in self.slots.values() 
+            if item is not None
+        )
+
+    def get_speed_multiplier(self):
+        """Calculate speed multiplier from equipped items"""
+        speed_multipliers = [
+            item.get_stat('speed', 1.0) 
+            for item in self.slots.values() 
+            if item is not None
+        ]
+        
+        # Multiply all speed multipliers
+        total_multiplier = 1.0
+        for multiplier in speed_multipliers:
+            total_multiplier *= multiplier
+        
+        return total_multiplier
+

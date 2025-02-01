@@ -10,6 +10,7 @@ class UIManager:
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.font = pygame.font.SysFont(None, 20)
+        self.show_equipment = False  # Add this line
         
         # Separate status bar resources from inventory
         self.status_resources = {
@@ -108,25 +109,25 @@ class UIManager:
 
     def draw_equipment(self, screen, player):
         """Draw equipment slots and equipped items"""
-        # Equipment panel background
+        if not self.show_equipment:
+            return
+            
+        # Equipment panel on right side
         panel_width = 200
-        panel_height = 300
-        panel_x = self.screen_width - panel_width - 170  # Left of inventory
-        panel_y = self.screen_height - panel_height - 10
-        
+        panel_x = self.screen_width - panel_width
         pygame.draw.rect(screen, (40, 40, 40), 
-                        (panel_x, panel_y, panel_width, panel_height))
+                    (panel_x, 0, panel_width, self.screen_height))
         pygame.draw.rect(screen, (100, 100, 100), 
-                        (panel_x, panel_y, panel_width, panel_height), 2)
+                    (panel_x, 0, panel_width, self.screen_height), 2)
 
         # Title
-        title = self.font.render("Equipment", True, (255, 255, 255))
-        screen.blit(title, (panel_x + 10, panel_y + 10))
+        title = self.font.render("Equipment (TAB to hide)", True, (255, 255, 255))
+        screen.blit(title, (panel_x + 10, 10))
 
         # Draw equipment slots
         slot_size = 40
         slot_padding = 10
-        slots_start_y = panel_y + 40
+        slots_start_y = 40
 
         for i, (slot_name, item) in enumerate(player.equipment.slots.items()):
             slot_x = panel_x + 10
@@ -134,12 +135,12 @@ class UIManager:
             
             # Draw slot background
             pygame.draw.rect(screen, (60, 60, 60), 
-                           (slot_x, slot_y, slot_size, slot_size))
+                       (slot_x, slot_y, slot_size, slot_size))
             pygame.draw.rect(screen, (120, 120, 120), 
-                           (slot_x, slot_y, slot_size, slot_size), 1)
+                       (slot_x, slot_y, slot_size, slot_size), 1)
             
-            # Draw slot label
-            label = self.font.render(slot_name.capitalize(), True, (200, 200, 200))
+            # Draw slot label with hotkey
+            label = self.font.render(f"{slot_name.capitalize()} (F{i+1})", True, (200, 200, 200))
             screen.blit(label, (slot_x + slot_size + 10, slot_y + slot_size//2 - 8))
             
             # Draw equipped item name if any
@@ -147,10 +148,14 @@ class UIManager:
                 item_name = self.font.render(item.name, True, (255, 255, 255))
                 screen.blit(item_name, (slot_x + slot_size + 80, slot_y + slot_size//2 - 8))
 
-        # Draw total armor value
+        # Draw total armor value at bottom
         armor_text = self.font.render(f"Total Armor: {player.equipment.get_total_armor()}", 
-                                    True, (200, 200, 200))
-        screen.blit(armor_text, (panel_x + 10, panel_y + panel_height - 30))
+                                True, (200, 200, 200))
+        screen.blit(armor_text, (panel_x + 10, self.screen_height - 30))
+
+    def toggle_equipment_display(self):
+        """Toggle the visibility of the equipment panel"""
+        self.show_equipment = not self.show_equipment
 
     def log_damage(self, damage, source):
         """Log a damage event"""
@@ -185,13 +190,70 @@ class UIManager:
     def draw_minimap(self, screen, player, npcs, obstacles, camera, building_system, lore_system, cities):
         """
         A simple top-right corner minimap. We just scale down by some factor.
-        Requires lore_system to be passed in to render lore fragments.
         """
         map_width = 150
         map_height = 150
         minimap_x = self.screen_width - map_width - 10
         minimap_y = 10
-        pygame.draw.rect(screen, (20,20,20), (minimap_x, minimap_y, map_width, map_height))
+        
+        # Create minimap surface
+        minimap_surface = pygame.Surface((map_width, map_height))
+        minimap_surface.fill((20, 20, 20))  # Dark gray background
+        
+        # Calculate scale factor (assuming 4000x4000 world size)
+        scale_factor = map_width / 4000
+        
+        # Draw obstacles (white)
+        for obs in obstacles:
+            mini_rect = pygame.Rect(
+                obs.x * scale_factor,
+                obs.y * scale_factor,
+                obs.width * scale_factor,
+                obs.height * scale_factor
+            )
+            pygame.draw.rect(minimap_surface, (200, 200, 200), mini_rect)
+        
+        # Draw buildings (blue)
+        if building_system and hasattr(building_system, 'structures'):
+            for structure in building_system.structures:
+                mini_rect = pygame.Rect(
+                    structure.rect.x * scale_factor,
+                    structure.rect.y * scale_factor,
+                    structure.rect.width * scale_factor,
+                    structure.rect.height * scale_factor
+                )
+                pygame.draw.rect(minimap_surface, (0, 100, 255), mini_rect)
+        
+        # Draw NPCs (red)
+        for npc in npcs:
+            mini_pos = (
+                int(npc.rect.centerx * scale_factor),
+                int(npc.rect.centery * scale_factor)
+            )
+            pygame.draw.circle(minimap_surface, (255, 0, 0), mini_pos, 2)
+        
+        # Draw lore fragments (yellow)
+        if lore_system and hasattr(lore_system, 'fragments'):
+            for fragment in lore_system.fragments:
+                mini_pos = (
+                    int(fragment.rect.centerx * scale_factor),
+                    int(fragment.rect.centery * scale_factor)
+                )
+                pygame.draw.circle(minimap_surface, (255, 255, 0), mini_pos, 2)
+        
+        # Draw player (green)
+        player_pos = (
+            int(player.rect.centerx * scale_factor),
+            int(player.rect.centery * scale_factor)
+        )
+        pygame.draw.circle(minimap_surface, (0, 255, 0), player_pos, 3)
+        
+        # Draw border
+        pygame.draw.rect(minimap_surface, (255, 255, 255), 
+                        (0, 0, map_width, map_height), 1)
+        
+        # Blit minimap to screen
+        screen.blit(minimap_surface, (minimap_x, minimap_y))
 
     def draw_npc_dialog(self, screen, dialog_text, font_size=24):
         """
@@ -250,7 +312,9 @@ class GameMenu:
             "U - Upgrade Structure",
             "H - Repair Structure",
             "",
-            "Inventory & Crafting:",
+            "Equipment & Inventory:",
+            "TAB - Toggle Equipment Panel",
+            "F1-F6 - Toggle Equipment Slots",
             "C - Open Crafting Menu",
             "",
             "Game Management:",

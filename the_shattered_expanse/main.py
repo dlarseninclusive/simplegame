@@ -134,6 +134,14 @@ def main():
                     show_menu = not show_menu
                 if event.key == pygame.K_c:
                     crafting_system.open_crafting_menu(player)
+                if event.key == pygame.K_TAB:
+                    ui_manager.toggle_equipment_display()
+                # Equipment hotkeys
+                if pygame.K_F1 <= event.key <= pygame.K_F6:
+                    slot_index = event.key - pygame.K_F1
+                    slots = list(player.equipment.slots.keys())
+                    if slot_index < len(slots):
+                        player.toggle_equipment_slot(slots[slot_index])
                 # 4) Attack key: space bar => attempt to attack NPCs
                 if event.key == pygame.K_SPACE:
                     player.attempt_attack(npcs, dt, combat_effects, ui_manager)
@@ -170,6 +178,20 @@ def main():
                 
                 # Update building system
                 building_system.update_structures(dt, player)
+
+                # Equipment toggle hotkeys
+                if event.key == pygame.K_F1:
+                    player.toggle_equipment_slot("weapon")
+                if event.key == pygame.K_F2:
+                    player.toggle_equipment_slot("chest")
+                if event.key == pygame.K_F3:
+                    player.toggle_equipment_slot("head")
+                if event.key == pygame.K_F4:
+                    player.toggle_equipment_slot("legs")
+                if event.key == pygame.K_F5:
+                    player.toggle_equipment_slot("feet")
+                if event.key == pygame.K_F6:
+                    player.toggle_equipment_slot("offhand")
 
         if not show_menu:
             keys = pygame.key.get_pressed()
