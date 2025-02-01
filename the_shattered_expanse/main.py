@@ -132,7 +132,7 @@ def main():
                     crafting_system.open_crafting_menu(player)
                 # 4) Attack key: space bar => attempt to attack NPCs
                 if event.key == pygame.K_SPACE:
-                    player.attempt_attack(npcs, dt, combat_effects)
+                    player.attempt_attack(npcs, dt, combat_effects, ui_manager)
 
             # Building controls
             if build_mode:

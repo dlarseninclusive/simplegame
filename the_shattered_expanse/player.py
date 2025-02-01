@@ -149,7 +149,7 @@ class Player:
         if faction in self.faction_rep:
             self.faction_rep[faction] += amount
 
-    def attempt_attack(self, npcs, dt, combat_effects=None):
+    def attempt_attack(self, npcs, dt, combat_effects=None, ui_manager=None):
         attacked = False
         for npc in npcs:
             dist_x = npc.rect.centerx - self.rect.centerx
@@ -177,6 +177,10 @@ class Player:
                     combat_effects.add(AttackAnimation(
                         self.rect, npc.rect, self.weapon_sprite
                     ))
+                
+                # Log damage in UI
+                if ui_manager:
+                    ui_manager.log_damage(damage, f"Player to {npc.__class__.__name__}")
                 
                 # Faction reputation effects
                 if npc.health <= 0 and npc.faction == "Scavengers":
