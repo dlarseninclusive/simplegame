@@ -1,3 +1,4 @@
+# player.py
 import pygame
 from combat_effects import DamageNumber, HitFlash, AttackAnimation
 from data import generate_loot  # Add loot generation import

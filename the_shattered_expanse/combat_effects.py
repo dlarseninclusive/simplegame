@@ -1,10 +1,15 @@
+# combat_effects.py
 import pygame
 import random
+
+pygame.font.init()  # Initialize the font module
+
+DEFAULT_FONT = pygame.font.Font(None, 24)
 
 class DamageNumber(pygame.sprite.Sprite):
     def __init__(self, x, y, damage, color=(255, 0, 0)):
         super().__init__()
-        self.font = pygame.font.Font(None, 24)
+        self.font = DEFAULT_FONT
         self.original_y = y
         self.float_height = 30
         self.lifetime = 1.0  # seconds

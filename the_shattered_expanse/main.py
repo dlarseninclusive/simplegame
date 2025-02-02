@@ -14,6 +14,9 @@ from pathfinding import GridPathfinder
 from sprites import create_player_sprite
 from combat_effects import DamageNumber, HitFlash, AttackAnimation
 from city_generator import CityGenerator
+from jail import Jail
+from character_classes import Warrior, Mage, Thief
+from slave_system import Slave
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
@@ -71,6 +74,11 @@ def main():
         target_item="scrap",
         target_count=5
     )
+
+    # Initialize new systems
+    jail_system = Jail()
+    # Optional: Initialize player with a specific character class
+    player.character_class = Warrior().name
 
     # City Generator
     city_generator = CityGenerator()
@@ -160,6 +168,14 @@ def main():
                             current_dialog = npc.interact(player)
                             dialog_timer = DIALOG_DURATION
                             break  # Interact with only one NPC at a time
+            
+                # Example: Commit a crime when 'C' is pressed
+                if event.key == pygame.K_c:
+                    player.commit_crime("theft", 5)
+
+                # Example: Change character class when 'L' is pressed (cycle or set a new class)
+                if event.key == pygame.K_l:
+                    player.character_class = "Mage"  # Or cycle through available classes
 
             # Building controls
             if build_mode:
