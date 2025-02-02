@@ -3,6 +3,7 @@ import random
 import math
 from buildings import Building, House
 from utils import distance
+from character_classes import Thief
 
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -20,6 +21,7 @@ class NPC:
         self.move_timer = 0
         self.in_jail = False
         self.jail_timer = 600
+        self.character_class = Thief()
         self.crime_timer = random.randint(300, 600)
         self.health = 100
         self.committed_crime = False

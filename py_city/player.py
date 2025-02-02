@@ -1,5 +1,6 @@
 import pygame
 from utils import distance
+from character_classes import Warrior
 
 # Ensure colors are defined
 RED = (255, 0, 0)
@@ -12,7 +13,8 @@ class Player:
         self.size = 35
         self.speed = 5
         self.sprite = sprite
-        self.health = 100
+        self.character_class = Warrior()
+        self.health = self.character_class.base_health
         self.karma = 0
         self.alignment = "neutral"
         self.current_quest = None
