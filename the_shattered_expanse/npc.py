@@ -64,7 +64,19 @@ class NPC:
         self.speed = stats["speed"]
         self.rect = pygame.Rect(x, y, self.width, self.height)
         self.faction = faction
-        self.hostile = stats.get("hostile", True)
+        
+        # Store original position for collision reverts
+        self.old_pos = (x, y)
+        
+        # Store original position for collision reverts
+        self.old_pos = (x, y)
+        
+        # Flag for shopkeepers
+        self.is_shopkeeper = enemy_type == "merchant"
+        
+        # Shopkeepers are not hostile
+        self.hostile = not self.is_shopkeeper and stats.get("hostile", True)
+        
         self.group_id = group_id
 
         self.move_cooldown = 0
@@ -83,26 +95,82 @@ class NPC:
         self.path = []            # list of (gx, gy) cells from A* 
         self.current_path_index = 0
 
+    def draw_faction_marker(self, screen, camera_offset):
+        """Draw a distinctive marker above the NPC to indicate their faction."""
+        marker_color = {
+            "Automatons": (0, 255, 255),   # Cyan
+            "Scavengers": (0, 255, 0),     # Green
+            "Cog Preachers": (255, 0, 255) # Magenta
+        }.get(self.faction, (255, 255, 255))  # Default white
+        
+        marker_style = {
+            "Automatons": lambda s, x: pygame.draw.line(s, marker_color,
+                (x.rect.left - camera_offset[0], x.rect.top - camera_offset[1] - 5),
+                (x.rect.right - camera_offset[0], x.rect.top - camera_offset[1] - 5), 2),
+            "Scavengers": lambda s, x: pygame.draw.line(s, marker_color,
+                (x.rect.centerx - camera_offset[0], x.rect.top - camera_offset[1] - 10),
+                (x.rect.centerx - camera_offset[0], x.rect.bottom - camera_offset[1] + 10), 2),
+            "Cog Preachers": lambda s, x: (
+                pygame.draw.line(s, marker_color,
+                    (x.rect.left - camera_offset[0], x.rect.top - camera_offset[1]),
+                    (x.rect.right - camera_offset[0], x.rect.bottom - camera_offset[1]), 2),
+                pygame.draw.line(s, marker_color,
+                    (x.rect.right - camera_offset[0], x.rect.top - camera_offset[1]),
+                    (x.rect.left - camera_offset[0], x.rect.bottom - camera_offset[1]), 2)
+            )
+        }
+        
+        marker_func = marker_style.get(self.faction, lambda s, x: None)
+        marker_func(screen, self)
+
+    def choose_behavior(self, dt, obstacles, player, pathfinder, city_roads=None):
+        """
+        Decide NPC behavior based on faction and road network.
+        """
+        # Scavengers can freely wander
+        if self.faction == "Scavengers":
+            self.wander(dt, obstacles)
+            return
+
+        # Other factions use road network for movement
+        if city_roads and not self.path:
+            # Choose a random road segment
+            road = random.choice(city_roads)
+            
+            # Convert world coordinates to grid coordinates
+            start_gx, start_gy = pathfinder.world_to_grid(self.rect.centerx, self.rect.centery)
+            
+            # Choose a random destination on the road
+            dest = random.choice(road[1:])  # Skip first point to avoid starting point
+            dest_gx, dest_gy = pathfinder.world_to_grid(dest[0], dest[1])
+            
+            # Find path using A*
+            self.path = pathfinder.find_path(start_gx, start_gy, dest_gx, dest_gy)
+            self.current_path_index = 0
+
+        # Use existing path-following logic
+        if self.path:
+            self.follow_path(dt, obstacles, player, pathfinder)
+        else:
+            # Fallback to existing behavior
+            dist_to_player = ((self.rect.centerx - player.rect.centerx)**2 +
+                              (self.rect.centery - player.rect.centery)**2)**0.5
+
+            if dist_to_player < 200 and self.hostile:
+                self.chase_player(dt, obstacles, player)
+            else:
+                self.wander(dt, obstacles)
+
     def update(self, dt, obstacles, player, pathfinder=None):
         """
         Decide what behavior to use each frame:
         - If player is near and we're hostile, chase or pathfind to them.
         - Otherwise, wander around randomly.
         """
-        dist_to_player = ((self.rect.centerx - player.rect.centerx)**2 +
-                          (self.rect.centery - player.rect.centery)**2)**0.5
-
-        # If we're close enough to see the player and are hostile
-        if dist_to_player < 200 and self.hostile:
-            if pathfinder is not None:
-                # Use pathfinding-based approach
-                self.follow_path(dt, obstacles, player, pathfinder)
-            else:
-                # Fallback to direct chase 
-                self.chase_player(dt, obstacles, player)
-        else:
-            # If the player is far, just wander
-            self.wander(dt, obstacles)
+        # Before moving, remember last position
+        self.old_pos = self.rect.topleft
+        
+        self.choose_behavior(dt, obstacles, player, pathfinder)
 
     def chase_player(self, dt, obstacles, player):
         """

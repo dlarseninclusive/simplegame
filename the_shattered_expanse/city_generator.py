@@ -136,6 +136,18 @@ class CityGenerator:
                     building.rect = new_building_rect
                     building.type = building_type
                     
+                    building.is_shop = True
+                    building.sign_text = f"{faction_name} Shop"
+                    door_width = int(new_building_rect.width * 0.4)
+                    door_height = 10
+                    building.door_rect = pygame.Rect(
+                        new_building_rect.x + (new_building_rect.width - door_width) // 2,
+                        new_building_rect.y + new_building_rect.height - door_height,
+                        door_width,
+                        door_height
+                    )
+                    building.interior_map = self.generate_interior_map(building)
+                    
                     buildings.add(building)
                     environment.add_obstacle(bx, by, building_size, building_size)  # Add to environment obstacles
         
@@ -157,11 +169,49 @@ class CityGenerator:
         npc_types = faction_config.get("npc_types", [])
         for _ in range(random.randint(5, 15)):  # Random number of NPCs per city
             npc_type = random.choice(npc_types)
-            npc = NPC(random.randint(0, self.world_width), random.randint(0, self.world_height), faction=faction_name, enemy_type=npc_type)
+            # If the faction is meant to have vendors, randomly choose some NPCs as shopkeepers.
+            is_vendor = random.random() < 0.3
+            npc = NPC(random.randint(0, self.world_width), random.randint(0, self.world_height),
+                      faction=faction_name, enemy_type=npc_type)
+            if is_vendor:
+                npc.is_shopkeeper = True
+                npc.hostile = False
             npcs.append(npc)
         
         return npcs
 
+    def generate_interior_map(self, building, environment=None):
+        """
+        Generate and return an interior map for a building.
+        This could be a new Surface or a new Environment instance.
+        For example, create a simple room with a basement staircase.
+        """
+        # Create a smaller interior room (300x200) with a black background
+        interior = pygame.Surface((300, 200))
+        interior.fill((0, 0, 0))  # black background
+
+        # Define interior walls (in the interior's local coordinate space)
+        building.interior_walls = [
+            pygame.Rect(0, 0, 300, 10),    # Top wall
+            pygame.Rect(0, 0, 10, 200),    # Left wall
+            pygame.Rect(290, 0, 10, 200),  # Right wall
+            pygame.Rect(0, 190, 300, 10)   # Bottom wall
+        ]
+
+        # Add interior walls to environment obstacles if environment is provided
+        if environment is not None:
+            for wall in building.interior_walls:
+                environment.add_obstacle(wall.x, wall.y, wall.width, wall.height)
+
+        # Also define a specific 'interior_door_rect' near the bottom
+        # so we know exactly where to place the player when they enter.
+        building.interior_door_rect = pygame.Rect(
+            130, 180,   # X, Y inside the 300x200 interior
+            40,  20     # width, height
+        )
+
+        return interior
+    
     def generate_city_resources(self, faction_name):
         """
         Generate resources for a specific faction.
@@ -184,4 +234,27 @@ class CityGenerator:
         
         return resources
 
-    # Other methods remain unchanged...
+    def generate_roads(self, city_centers):
+        """
+        Generate road segments connecting city centers with some randomness.
+        """
+        roads = []
+        for i in range(len(city_centers) - 1):
+            start = city_centers[i]
+            end = city_centers[i+1]
+            
+            # Add some randomness to road path
+            mid_x = (start[0] + end[0]) / 2 + random.randint(-100, 100)
+            mid_y = (start[1] + end[1]) / 2 + random.randint(-100, 100)
+            
+            # Create a road with multiple waypoints
+            road_segment = [
+                start,
+                (mid_x, start[1]),
+                (mid_x, mid_y),
+                (end[0], mid_y),
+                end
+            ]
+            roads.append(road_segment)
+        
+        return roads

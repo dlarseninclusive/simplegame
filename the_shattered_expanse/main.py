@@ -18,19 +18,68 @@ from jail import Jail
 from character_classes import Warrior, Mage, Thief
 from slave_system import Slave
 
+# Globals for building transitions
+current_building = None
+
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 FPS = 60
 
+def enter_building(building, player, npcs):
+    """
+    Simple function to handle entering a building.
+    Can be expanded to show interior, trigger dialogue, etc.
+    """
+    global current_state, current_interior, exit_door, current_building
+    # Switch to interior state
+    current_state = "interior"
+    current_interior = building.interior_map  # interior already generated
+    current_building = building
+    
+    # Set current_building for player
+    player.current_building = building
+    
+    # Set current_building for NPCs in the interior
+    for npc in npcs:
+        npc.current_building = building
+    # Instead of centering, spawn at the building's interior_door_rect if present
+    if hasattr(building, "interior_door_rect"):
+        # The interior door rect is in the interior's local (0..300, 0..200) coordinates.
+        # We'll offset it so the player spawns exactly there on-screen.
+        door_x = (SCREEN_WIDTH - building.interior_map.get_width()) // 2 + building.interior_door_rect.x
+        door_y = (SCREEN_HEIGHT - building.interior_map.get_height()) // 2 + building.interior_door_rect.y
+        # Spawn the player slightly away from the door (e.g. 10 pixels upward)
+        player.rect.midbottom = (door_x + building.interior_door_rect.width//2,
+                                 door_y + building.interior_door_rect.height - 10)
+        # Initialize an exit delay timer (in seconds) to prevent immediate exit
+        player.exit_delay = 1.0
+    else:
+        # Fallback if no interior_door_rect
+        player.rect.topleft = (
+            (SCREEN_WIDTH - player.rect.width) // 2,
+            (SCREEN_HEIGHT - player.rect.height) // 2
+        )
+    exit_door = building.door_rect.copy()  # Save the door for exit
+    print(f"Entering {building.type} interior")
+    if getattr(building, "is_shop", False):
+        print("Merchant: Welcome, valued customer!")
+
 def main():
     pygame.init()
+    global current_building
+    global current_interior
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Shattered Expanse - Updated Features")
 
     clock = pygame.time.Clock()
 
+    # Game state
+    global current_state, current_interior
+    current_state = "exterior"  # "exterior" or "interior"
+    current_interior = None
+
     # Create objects
-    player = Player(400, 300)
+    player = Player(2000, 2000)
     combat_effects = pygame.sprite.Group()
     
     # 1) Bigger world: 4000x4000
@@ -80,8 +129,81 @@ def main():
     # Optional: Initialize player with a specific character class
     player.character_class = Warrior().name
 
+    # Initialize TabbedMenu
+    tab_font = pygame.font.Font(None, 24)
+    
+    # Create surfaces for each tab's content
+    lore_surface = pygame.Surface((400, 270))
+    lore_surface.fill((30, 30, 30))
+    
+    # Render lore fragments onto the surface
+    lore_y_offset = 10
+    for fragment in lore_system.discovered_fragments:
+        fragment_text = pygame.font.Font(None, 20).render(fragment.text, True, (200, 200, 200))
+        lore_surface.blit(fragment_text, (10, lore_y_offset))
+        lore_y_offset += 25
+    
+    faction_surface = pygame.Surface((400, 270))
+    faction_surface.fill((30, 30, 30))
+    
+    # Render faction information
+    faction_text = pygame.font.Font(None, 20).render("Faction Reputation:", True, (255, 255, 255))
+    faction_surface.blit(faction_text, (10, 10))
+    
+    faction_y_offset = 40
+    for faction, rep in player.faction_rep.items():
+        rep_text = pygame.font.Font(None, 20).render(f"{faction}: {rep}", True, (200, 200, 200))
+        faction_surface.blit(rep_text, (10, faction_y_offset))
+        faction_y_offset += 25
+    
+    # Create backpack surface
+    backpack_surface = pygame.Surface((400, 270))
+    backpack_surface.fill((30, 30, 30))
+    
+    # Render backpack contents
+    backpack_y_offset = 10
+    backpack_font = pygame.font.Font(None, 20)
+    backpack_surface.blit(
+        backpack_font.render("Backpack Contents:", True, (255, 255, 255)), 
+        (10, backpack_y_offset)
+    )
+    backpack_y_offset += 30
+    
+    for item, quantity in player.backpack.items:
+        item_text = backpack_font.render(f"{item.name} x{quantity}", True, (200, 200, 200))
+        backpack_surface.blit(item_text, (10, backpack_y_offset))
+        backpack_y_offset += 25
+        
+    # Create equipment surface
+    equipment_surface = pygame.Surface((400, 270))
+    equipment_surface.fill((30, 30, 30))
+    equipment_font = pygame.font.Font(None, 20)
+    y_offset = 10
+    title = equipment_font.render("Equipment", True, (255, 255, 255))
+    equipment_surface.blit(title, (10, y_offset))
+    y_offset += 30
+    for slot, item in player.equipment.slots.items():
+        text = f"{slot.capitalize()}: {item.name if item else 'Empty'}"
+        eq_text = equipment_font.render(text, True, (200, 200, 200))
+        equipment_surface.blit(eq_text, (10, y_offset))
+        y_offset += 25
+    
+    tabs = [
+        {'label': 'Lore Log', 'content': lore_surface},
+        {'label': 'Faction Info', 'content': faction_surface},
+        {'label': 'Backpack', 'content': backpack_surface},
+        {'label': 'Equipment', 'content': equipment_surface},
+    ]
+    
+    tabbed_menu_rect = pygame.Rect(200, 150, 400, 300)
+    from ui import TabbedMenu  # Import TabbedMenu from ui module
+    tabbed_menu = TabbedMenu(tabbed_menu_rect, tabs, tab_font)
+
     # City Generator
     city_generator = CityGenerator()
+
+    # Tabbed menu toggle flag
+    show_tabbed_menu = False
 
     # Generate cities for each faction
     city_buildings = {}
@@ -112,6 +234,7 @@ def main():
 
     ui_manager = UIManager(SCREEN_WIDTH, SCREEN_HEIGHT)
     game_menu = GameMenu(SCREEN_WIDTH, SCREEN_HEIGHT)
+    from ui import TabbedMenu  # Add import for TabbedMenu
 
     build_mode = False
     show_menu = False
@@ -126,6 +249,10 @@ def main():
     while running:
         dt = clock.tick(FPS) / 1000.0
 
+        # Pause check: if game is paused, set dt to 0
+        if show_menu:
+            dt = 0
+
         # Day/Night
         day_cycle += 0.5 * dt
         if day_cycle >= 24.0:
@@ -135,6 +262,9 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
+            # Forward events to TabbedMenu
+            tabbed_menu.handle_event(event)
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_b:
                     build_mode = not build_mode
@@ -142,12 +272,13 @@ def main():
                     show_menu = not show_menu
                 if event.key == pygame.K_c:
                     crafting_system.open_crafting_menu(player)
-                if event.key == pygame.K_TAB:
-                    ui_manager.toggle_equipment_display()
+                # Removed equipment toggle on Tab for TabbedMenu
                 if event.key == pygame.K_m:  # Add minimap toggle
                     ui_manager.toggle_minimap()
                 if event.key == pygame.K_i:  # Toggle backpack
                     ui_manager.toggle_backpack_display()
+                if event.key == pygame.K_TAB:  # Toggle tabbed menu
+                    show_tabbed_menu = not show_tabbed_menu
                 # Equipment hotkeys
                 if pygame.K_F1 <= event.key <= pygame.K_F6:
                     slot_index = event.key - pygame.K_F1
@@ -211,16 +342,32 @@ def main():
             keys = pygame.key.get_pressed()
 
             # Player
+            player.old_pos = player.rect.topleft  # store where the player was
             player.handle_input(dt)
             player.update(dt, environment.obstacles, npcs, day_cycle, heat_stroke_threshold)
 
-            # 5) Press E to collect resources
-            if keys[pygame.K_e]:
-                for node in resource_nodes:
-                    if not node.collected and player.rect.colliderect(node.rect):
-                        node.collected = True
-                        player.collect_resource(node)
-                        quest_system.check_item_collection(player, node.resource_type)
+            # Only check building doors if we're in the "exterior" state
+            if current_state == "exterior" and keys[pygame.K_e]:
+                door_entered = False
+                # Check both placed structures and city-generated buildings
+                for building_list in [building_system.structures] + list(city_buildings.values()):
+                    for building in building_list:
+                        if hasattr(building, 'door_rect'):
+                            # Compare world coordinates directly with inflated door rect
+                            if player.rect.colliderect(building.door_rect.inflate(10, 10)):
+                                print(f"Collision detected with building door: {building.type}")
+                                enter_building(building, player, npcs)
+                                door_entered = True
+                                break
+                    if door_entered:
+                        break
+                # Only if no door was entered, process resource collection.
+                if not door_entered:
+                    for node in resource_nodes:
+                        if not node.collected and player.rect.colliderect(node.rect):
+                            node.collected = True
+                            player.collect_resource(node)
+                            quest_system.check_item_collection(player, node.resource_type)
 
             # NPC updates
             # Remove dead NPCs from the list if health <= 0
@@ -235,43 +382,272 @@ def main():
             for node in resource_nodes:
                 node.update(dt)  # Check if respawn timer is ready
 
-            # Camera
-            camera.update(player.rect.centerx, player.rect.centery)
+            # Lore fragment discovery
+            for fragment in lore_system.fragments[:]:
+                if player.rect.colliderect(fragment.rect):
+                    lore_system.discovered_fragments.append(fragment)
+                    lore_system.fragments.remove(fragment)
+                    print(f"Discovered lore: {fragment.text}")
+                    # Optional: Add a UI notification or sound effect here
 
-        # RENDER
-        if 6 <= day_cycle < 18:
-            background_color = (210, 180, 140)
+            # Camera updates only in exterior state
+            if current_state == "exterior":
+                camera.update(player.rect.centerx, player.rect.centery)
+
+        # Clear screen with appropriate background
+        if current_state == "exterior":
+            if 6 <= day_cycle < 18:
+                background_color = (210, 180, 140)
+            else:
+                background_color = (80, 60, 60)
         else:
-            background_color = (80, 60, 60)
-
+            background_color = (50, 50, 50)  # Interior background
         screen.fill(background_color)
 
-        # Obstacles
-        for obs in environment.obstacles:
-            ox = obs.x - camera.offset_x
-            oy = obs.y - camera.offset_y
-            pygame.draw.rect(screen, (0, 128, 0), (ox, oy, obs.width, obs.height))
+        # Render exterior elements
+        if current_state == "exterior":
+            # Obstacles
+            for obs in environment.obstacles:
+                ox = obs.x - camera.offset_x
+                oy = obs.y - camera.offset_y
+                pygame.draw.rect(screen, (0, 128, 0), (ox, oy, obs.width, obs.height))
+    
+            # Resource nodes
+            for node in resource_nodes:
+                if not node.collected:
+                    nx = node.rect.x - camera.offset_x
+                    ny = node.rect.y - camera.offset_y
+                    color = (30, 144, 255)
+                    if node.resource_type == "water":
+                        color = (0, 191, 255)
+                    elif node.resource_type == "food":
+                        color = (50, 205, 50)
+                    elif node.resource_type == "artifact":
+                        color = (186, 85, 211)
+                    pygame.draw.rect(screen, color, (nx, ny, node.rect.width, node.rect.height))
 
-        # Resource nodes
-        for node in resource_nodes:
-            if not node.collected:
-                nx = node.rect.x - camera.offset_x
-                ny = node.rect.y - camera.offset_y
-                color = (30, 144, 255)
-                if node.resource_type == "water":
-                    color = (0, 191, 255)
-                elif node.resource_type == "food":
-                    color = (50, 205, 50)
-                elif node.resource_type == "artifact":
-                    color = (186, 85, 211)
-                pygame.draw.rect(screen, color, (nx, ny, node.rect.width, node.rect.height))
+            # Render city buildings for each faction
+            for faction, buildings in city_buildings.items():
+                for building in buildings:
+                    bx = building.rect.x - camera.offset_x
+                    by = building.rect.y - camera.offset_y
+                    screen.blit(building.image, (bx, by))
+                    
+                    if hasattr(building, 'sign_text') and building.sign_text:
+                        sign_font = pygame.font.Font(None, 16)
+                        sign_surf = sign_font.render(building.sign_text, True, (255, 255, 255))
+                        screen.blit(sign_surf, (bx, by - 20))
+                    
+                    if hasattr(building, 'door_rect'):
+                        door_rect = building.door_rect.copy()
+                        door_rect.x -= camera.offset_x
+                        door_rect.y -= camera.offset_y
+                        pygame.draw.rect(screen, (255, 0, 0), 
+                                         (door_rect.x, door_rect.y,
+                                          door_rect.width,
+                                          door_rect.height), 2)
+                        if player.rect.colliderect(door_rect):
+                            font = pygame.font.Font(None, 24)
+                            prompt = font.render("E", True, (255, 255, 255))
+                            screen.blit(prompt, (door_rect.centerx - prompt.get_width()//2, door_rect.top - 25))
 
-        # Render city buildings for each faction
-        for faction, buildings in city_buildings.items():
-            for building in buildings:
-                bx = building.rect.x - camera.offset_x
-                by = building.rect.y - camera.offset_y
-                screen.blit(building.image, (bx, by))
+            # Existing building system rendering
+            building_types = [
+                "Generator", "Storage", "Workshop", "Collector", 
+                "Turret", "Wall", "Research Station", "Repair Bay", 
+                "Communication Tower", "Power Relay"
+            ]
+        
+            for bld in building_system.structures:
+                bx = bld.x - camera.offset_x
+                by = bld.y - camera.offset_y
+            
+                # Enhanced building color scheme
+                building_colors = {
+                    "Generator": (255, 140, 0),      # Orange
+                    "Storage": (139, 69, 19),        # Brown
+                    "Workshop": (105, 105, 105),     # Gray
+                    "Collector": (46, 139, 87),      # Sea green
+                    "Turret": (178, 34, 34),         # Firebrick red
+                    "Wall": (112, 128, 144),         # Slate gray
+                    "Research Station": (70, 130, 180),  # Steel blue
+                    "Repair Bay": (32, 178, 170),    # Light sea green
+                    "Communication Tower": (75, 0, 130),  # Indigo
+                    "Power Relay": (255, 215, 0)     # Gold
+                }
+            
+                color = building_colors.get(bld.structure_type, (139, 69, 19))
+            
+                # Different shapes or rendering for special buildings
+                if bld.structure_type == "Communication Tower":
+                    # Render as a taller, thinner structure
+                    pygame.draw.rect(screen, color, (bx, by, bld.width//2, bld.height*1.5))
+                elif bld.structure_type == "Turret":
+                    # Render as a circular/octagonal shape
+                    pygame.draw.polygon(screen, color, [
+                        (bx, by+bld.height//2),
+                        (bx+bld.width//2, by),
+                        (bx+bld.width, by+bld.height//2),
+                        (bx+bld.width, by+bld.height),
+                        (bx, by+bld.height)
+                    ])
+                else:
+                    pygame.draw.rect(screen, color, (bx, by, bld.width, bld.height))
+                
+                # Health bar (red to green)
+                health_percent = bld.health / bld.max_health
+                health_width = bld.width * health_percent
+                health_color = (int(255 * (1 - health_percent)), int(255 * health_percent), 0)
+                pygame.draw.rect(screen, health_color, (bx, by - 5, health_width, 3))
+                
+                # Power indicator
+                if bld.power_required > 0:
+                    power_percent = bld.power_received / bld.power_required
+                    power_width = bld.width * power_percent
+                    pygame.draw.rect(screen, (0, 191, 255), (bx, by - 9, power_width, 3))
+                    
+                # Level indicator
+                if bld.level > 1:
+                    font = pygame.font.Font(None, 20)
+                    level_text = font.render(f"L{bld.level}", True, (255, 255, 255))
+                    screen.blit(level_text, (bx + bld.width - 20, by + bld.height - 20))
+
+        # Render interior elements
+        elif current_state == "interior":
+            if current_interior:
+                # Center the interior map on screen
+                interior_w, interior_h = current_interior.get_size()
+                x = (SCREEN_WIDTH - interior_w) // 2
+                y = (SCREEN_HEIGHT - interior_h) // 2
+                screen.blit(current_interior, (x, y))
+                
+                # Check collision with interior walls (if defined)
+                if current_building and hasattr(current_building, 'interior_walls'):
+                    for wall in current_building.interior_walls:
+                        wall_rect = wall.copy()
+                        wall_rect.x += x
+                        wall_rect.y += y
+                
+                        if player.rect.colliderect(wall_rect):
+                            # Determine the direction of collision more precisely
+                            overlap_left = wall_rect.right - player.rect.left
+                            overlap_right = player.rect.right - wall_rect.left
+                            overlap_top = wall_rect.bottom - player.rect.top
+                            overlap_bottom = player.rect.bottom - wall_rect.top
+
+                            # Find the smallest overlap
+                            min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+                            # Move player out based on the smallest overlap
+                            if min_overlap == overlap_left:
+                                player.rect.left = wall_rect.right
+                            elif min_overlap == overlap_right:
+                                player.rect.right = wall_rect.left
+                            elif min_overlap == overlap_top:
+                                player.rect.top = wall_rect.bottom
+                            else:  # overlap_bottom
+                                player.rect.bottom = wall_rect.top
+
+                        # Similar collision resolution for NPCs
+                        for npc in npcs:
+                            if npc.rect.colliderect(wall_rect):
+                                overlap_left = wall_rect.right - npc.rect.left
+                                overlap_right = npc.rect.right - wall_rect.left
+                                overlap_top = wall_rect.bottom - npc.rect.top
+                                overlap_bottom = npc.rect.bottom - wall_rect.top
+
+                                min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+                                if min_overlap == overlap_left:
+                                    npc.rect.left = wall_rect.right
+                                elif min_overlap == overlap_right:
+                                    npc.rect.right = wall_rect.left
+                                elif min_overlap == overlap_top:
+                                    npc.rect.top = wall_rect.bottom
+                                else:  # overlap_bottom
+                                    npc.rect.bottom = wall_rect.top
+
+                # Define the exit door relative to the interior map
+                exit_door_rect = pygame.Rect(
+                    x + current_building.interior_door_rect.x,
+                    y + current_building.interior_door_rect.y,
+                    current_building.interior_door_rect.width,
+                    current_building.interior_door_rect.height
+                )
+                pygame.draw.rect(screen, (200, 200, 0), exit_door_rect)
+                
+                # Draw the player without subtracting any camera offset
+                screen.blit(create_player_sprite(), player.rect)
+                
+                # Update exit delay timer if present
+                if hasattr(player, "exit_delay") and player.exit_delay > 0:
+                    player.exit_delay -= dt
+                else:
+                    # Now check for exit door collision only if the delay has elapsed
+                    if player.rect.colliderect(exit_door_rect):
+                        if pygame.key.get_pressed()[pygame.K_e]:
+                            current_state = "exterior"
+                            current_interior = None
+                            if current_building is not None:
+                                # Place the player back at the building's exterior door (or another safe spot)
+                                player.rect.midbottom = (current_building.door_rect.centerx,
+                                                        current_building.door_rect.top - 5)
+                                
+                                # Reset current_building for player and NPCs
+                                player.current_building = None
+                                for npc in npcs:
+                                    npc.current_building = None
+                            
+                            current_building = None
+                            camera.update(player.rect.centerx, player.rect.centery)
+                            print("Exiting interior back to world.")
+
+        if current_state == "exterior":
+            # Obstacles
+            for obs in environment.obstacles:
+                ox = obs.x - camera.offset_x
+                oy = obs.y - camera.offset_y
+                pygame.draw.rect(screen, (0, 128, 0), (ox, oy, obs.width, obs.height))
+
+        if current_state == "exterior":
+            # Resource nodes
+            for node in resource_nodes:
+                if not node.collected:
+                    nx = node.rect.x - camera.offset_x
+                    ny = node.rect.y - camera.offset_y
+                    color = (30, 144, 255)
+                    if node.resource_type == "water":
+                        color = (0, 191, 255)
+                    elif node.resource_type == "food":
+                        color = (50, 205, 50)
+                    elif node.resource_type == "artifact":
+                        color = (186, 85, 211)
+                    pygame.draw.rect(screen, color, (nx, ny, node.rect.width, node.rect.height))
+
+            # Render city buildings for each faction
+            for faction, buildings in city_buildings.items():
+                for building in buildings:
+                    bx = building.rect.x - camera.offset_x
+                    by = building.rect.y - camera.offset_y
+                    screen.blit(building.image, (bx, by))
+                    
+                    if hasattr(building, 'sign_text') and building.sign_text:
+                        sign_font = pygame.font.Font(None, 16)
+                        sign_surf = sign_font.render(building.sign_text, True, (255, 255, 255))
+                        screen.blit(sign_surf, (bx, by - 20))
+                    
+                    if hasattr(building, 'door_rect'):
+                        door_rect = building.door_rect.copy()
+                        door_rect.x -= camera.offset_x
+                        door_rect.y -= camera.offset_y
+                        pygame.draw.rect(screen, (255, 0, 0), 
+                                         (door_rect.x, door_rect.y,
+                                          door_rect.width,
+                                          door_rect.height), 2)
+                        if player.rect.colliderect(door_rect):
+                            font = pygame.font.Font(None, 24)
+                            prompt = font.render("E", True, (255, 255, 255))
+                            screen.blit(prompt, (door_rect.centerx - prompt.get_width()//2, door_rect.top - 25))
 
         # Existing building system rendering
         building_types = [
@@ -333,6 +709,8 @@ def main():
                 font = pygame.font.Font(None, 20)
                 level_text = font.render(f"L{bld.level}", True, (255, 255, 255))
                 screen.blit(level_text, (bx + bld.width - 20, by + bld.height - 20))
+        
+        # Duplicate interior rendering block removed
 
         # NPCs with health bars
         for npc in npcs:
@@ -341,6 +719,9 @@ def main():
             
             # Draw the sprite
             screen.blit(npc.sprite, (nx, ny))
+            
+            # Draw faction markers
+            npc.draw_faction_marker(screen, (camera.offset_x, camera.offset_y))
             
             # Health bar
             health_percent = npc.health / npc.max_health
@@ -424,8 +805,43 @@ def main():
         ui_manager.draw_hud(screen, player, factions, build_mode, day_cycle)
         ui_manager.draw_minimap(screen, player, npcs, environment.obstacles, camera, building_system, lore_system, city_buildings)  # Pass city_buildings
 
+        if ui_manager.show_lore_log:
+            ui_manager.draw_lore_log(screen, lore_system)
+
         if show_menu:
             game_menu.draw_menu(screen)
+        
+        # Update lore tab content
+        lore_surface.fill((30, 30, 30))  # Clear the surface
+        y_offset = 10
+        for fragment in lore_system.discovered_fragments:
+            lore_text = tab_font.render(fragment.text, True, (200, 200, 200))
+            lore_surface.blit(lore_text, (10, y_offset))
+            y_offset += 25
+
+        # Update faction info tab
+        faction_surface.fill((30, 30, 30))
+        y_offset = 10
+        rep_text = tab_font.render(f"Automatons: {player.faction_rep.get('Automatons',0)}", True, (200,200,200))
+        faction_surface.blit(rep_text, (10, y_offset))
+        y_offset += 25
+        rep_text = tab_font.render(f"Scavengers: {player.faction_rep.get('Scavengers',0)}", True, (200,200,200))
+        faction_surface.blit(rep_text, (10, y_offset))
+        y_offset += 25
+        rep_text = tab_font.render(f"Cog Preachers: {player.faction_rep.get('Cog Preachers',0)}", True, (200,200,200))
+        faction_surface.blit(rep_text, (10, y_offset))
+
+        # Update backpack tab
+        backpack_surface.fill((30, 30, 30))
+        y_offset = 10
+        for item, quantity in player.backpack.items:
+            backpack_text = tab_font.render(f"{item.name} x{quantity}", True, (200, 200, 200))
+            backpack_surface.blit(backpack_text, (10, y_offset))
+            y_offset += 25
+
+        # Draw TabbedMenu only if flag is true
+        if show_tabbed_menu:
+            tabbed_menu.draw(screen)
 
         pygame.display.flip()
 

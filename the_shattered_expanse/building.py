@@ -10,11 +10,27 @@ class Structure:
         self.width = width
         self.height = height
         self.structure_type = structure_type
+        self.is_shop = False
+        self.sign_text = ""
+        self.door_rect = pygame.Rect(x, y, 0, 0)  # default; to be updated by city_generator
+        
+        # Power system attributes
         self.health = 100
         self.max_health = 100
         self.level = 1
         self.upgrade_cost = {"scrap": 5, "artifact": 1}
         self.repair_cost = {"scrap": 1}
+        
+        # New attributes for shop and door
+        self.door_rect = pygame.Rect(x, y, 0, 0)  # will be set later by city_generator
+        self.sign_text = ""
+        self.is_shop = False
+        
+        # Power system attributes
+        self.power_required = 0
+        self.power_received = 0
+        self.power_grid_id = None  # Structures on same grid share power
+        self.power_range = 100  # How far power can transmit
         
         # Power system attributes
         self.power_required = 0
@@ -116,6 +132,9 @@ class BuildingSystem:
             "Communication Tower": {"scrap": 80, "artifact": 2},
             "Power Relay": {"scrap": 45, "artifact": 1}
         }
+        
+        # Add power grid timer
+        self.power_grid_timer = 0
         
         # Strategic placement zones
         self.strategic_zones = {
@@ -271,8 +290,11 @@ class BuildingSystem:
             
     def update_structures(self, dt, player):
         """Update all structures' production and status"""
-        # First, update power grids
-        self.update_power_grids()
+        # Update power grids only once per second
+        self.power_grid_timer += dt
+        if self.power_grid_timer >= 1.0:
+            self.update_power_grids()
+            self.power_grid_timer = 0
         
         for structure in self.structures:
             # Only operate if structure has power (or is a generator)

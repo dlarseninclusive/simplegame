@@ -13,6 +13,8 @@ class UIManager:
         self.show_equipment = False
         self.show_minimap = True
         self.show_backpack = False  # New line
+        self.show_detailed_ui = False
+        self.show_lore_log = False  # New flag for lore log
         
         # Separate status bar resources from inventory
         self.status_resources = {
@@ -60,13 +62,19 @@ class UIManager:
         pygame.draw.rect(screen, (255, 255, 255),
                          (x_offset, y_offset+20, bar_width, 8), 1)
 
-        # Faction Rep
-        rep_text = self.font.render(
-            f"Automatons:{player.faction_rep['Automatons']}  "
-            f"Scavengers:{player.faction_rep['Scavengers']}  "
-            f"Cog:{player.faction_rep['Cog Preachers']}",
-            True, (255,255,255))
-        screen.blit(rep_text, (x_offset, y_offset+35))
+        # Minimal info always displayed
+        basic_text = self.font.render(
+            f"HP: {player.health}/{player.max_health}", True, (255,255,255))
+        screen.blit(basic_text, (x_offset, y_offset+35))
+
+        # Detailed faction rep
+        if self.show_detailed_ui:
+            rep_text = self.font.render(
+                f"Automatons:{player.faction_rep['Automatons']}  "
+                f"Scavengers:{player.faction_rep['Scavengers']}  "
+                f"Cog:{player.faction_rep['Cog Preachers']}",
+                True, (255,255,255))
+            screen.blit(rep_text, (x_offset, y_offset+50))
 
         # Update status resources (could be tied to a method that player calls)
         self.status_resources['scrap'] = min(player.inventory.get('scrap', 0), 50)
@@ -234,7 +242,7 @@ class UIManager:
         """
         if not self.show_minimap:
             return
-        
+
         map_width = 150
         map_height = 150
         minimap_x = self.screen_width - map_width - 10
@@ -261,10 +269,10 @@ class UIManager:
         if building_system and hasattr(building_system, 'structures'):
             for structure in building_system.structures:
                 mini_rect = pygame.Rect(
-                    structure.rect.x * scale_factor,
-                    structure.rect.y * scale_factor,
-                    structure.rect.width * scale_factor,
-                    structure.rect.height * scale_factor
+                    structure.x * scale_factor,
+                    structure.y * scale_factor,
+                    structure.width * scale_factor,
+                    structure.height * scale_factor
                 )
                 pygame.draw.rect(minimap_surface, (0, 100, 255), mini_rect)
         
@@ -298,6 +306,30 @@ class UIManager:
         
         # Blit minimap to screen
         screen.blit(minimap_surface, (minimap_x, minimap_y))
+
+    def draw_lore_log(self, screen, lore_system):
+        """
+        Draw a panel displaying discovered lore fragments.
+        """
+        panel_width = 400
+        panel_height = 300
+        panel_x = (self.screen_width - panel_width) // 2
+        panel_y = (self.screen_height - panel_height) // 2
+        
+        # Draw panel background and border
+        pygame.draw.rect(screen, (0, 0, 0), (panel_x, panel_y, panel_width, panel_height))
+        pygame.draw.rect(screen, (255, 255, 255), (panel_x, panel_y, panel_width, panel_height), 2)
+        
+        # Title
+        title = self.font.render("Lore Log", True, (255, 255, 255))
+        screen.blit(title, (panel_x + 10, panel_y + 10))
+        
+        # List discovered lore
+        y_offset = panel_y + 40
+        for fragment in lore_system.discovered_fragments:
+            lore_text = self.font.render(fragment.text, True, (200, 200, 200))
+            screen.blit(lore_text, (panel_x + 10, y_offset))
+            y_offset += 25
 
     def draw_npc_dialog(self, screen, dialog_text, font_size=24):
         """
@@ -394,3 +426,52 @@ class GameMenu:
             ))
 
         pygame.display.flip()
+
+class TabbedMenu:
+    def __init__(self, rect, tabs, font):
+        """
+        rect: pygame.Rect defining the area for the menu.
+        tabs: list of dicts, each with 'label' and 'content' (a Surface)
+        font: pygame font for rendering tab labels.
+        """
+        self.rect = rect
+        self.tabs = tabs
+        self.font = font
+        self.active_tab = 0
+        self.button_height = 30
+        self._create_button_rects()
+
+    def _create_button_rects(self):
+        # Divide the top area of the menu into equal button regions.
+        num_tabs = len(self.tabs)
+        button_width = self.rect.width // num_tabs
+        for i, tab in enumerate(self.tabs):
+            tab['button_rect'] = pygame.Rect(self.rect.x + i * button_width,
+                                              self.rect.y,
+                                              button_width,
+                                              self.button_height)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            for i, tab in enumerate(self.tabs):
+                if tab['button_rect'].collidepoint(event.pos):
+                    self.active_tab = i
+
+    def draw(self, screen):
+        # Draw the tab buttons.
+        for i, tab in enumerate(self.tabs):
+            color = (255, 255, 0) if i == self.active_tab else (200, 200, 200)
+            pygame.draw.rect(screen, color, tab['button_rect'])
+            label_surf = self.font.render(tab['label'], True, (0, 0, 0))
+            label_rect = label_surf.get_rect(center=tab['button_rect'].center)
+            screen.blit(label_surf, label_rect)
+        # Draw active tab's content in the rest of the menu area.
+        content_area = pygame.Rect(self.rect.x,
+                                   self.rect.y + self.button_height,
+                                   self.rect.width,
+                                   self.rect.height - self.button_height)
+        pygame.draw.rect(screen, (50, 50, 50), content_area)
+        # Assume each tab's 'content' is a pre-rendered Surface.
+        active_content = self.tabs[self.active_tab].get('content')
+        if active_content:
+            screen.blit(active_content, (content_area.x + 10, content_area.y + 10))
