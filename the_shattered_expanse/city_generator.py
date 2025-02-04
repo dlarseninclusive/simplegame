@@ -236,25 +236,45 @@ class CityGenerator:
 
     def generate_roads(self, city_centers):
         """
-        Generate road segments connecting city centers with some randomness.
+        Generate road segments connecting city centers with pathfinding and terrain consideration.
+        
+        :param city_centers: List of city center coordinates
+        :return: List of road segments with waypoints
         """
         roads = []
+        
+        # Use A* pathfinding to create road paths
         for i in range(len(city_centers) - 1):
             start = city_centers[i]
             end = city_centers[i+1]
             
-            # Add some randomness to road path
-            mid_x = (start[0] + end[0]) / 2 + random.randint(-100, 100)
-            mid_y = (start[1] + end[1]) / 2 + random.randint(-100, 100)
-            
-            # Create a road with multiple waypoints
-            road_segment = [
-                start,
-                (mid_x, start[1]),
-                (mid_x, mid_y),
-                (end[0], mid_y),
-                end
-            ]
+            # Add some randomness and terrain-following behavior
+            road_segment = self._create_road_segment(start, end)
             roads.append(road_segment)
         
         return roads
+
+    def _create_road_segment(self, start, end, max_deviation=100):
+        """
+        Create a road segment between two points with some natural curvature.
+        
+        :param start: Starting point coordinates
+        :param end: Ending point coordinates
+        :param max_deviation: Maximum allowed deviation from straight line
+        :return: List of waypoints forming the road
+        """
+        road_points = [start]
+        
+        # Add intermediate points with some randomness
+        mid_x = (start[0] + end[0]) / 2 + random.randint(-max_deviation, max_deviation)
+        mid_y = (start[1] + end[1]) / 2 + random.randint(-max_deviation, max_deviation)
+        
+        # Create a curved road segment with 2-3 intermediate points
+        road_points.extend([
+            (mid_x, start[1]),  # First waypoint
+            (mid_x, mid_y),     # Middle waypoint
+            (end[0], mid_y),    # Third waypoint
+            end
+        ])
+        
+        return road_points

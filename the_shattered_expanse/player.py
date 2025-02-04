@@ -1,5 +1,6 @@
 # player.py
 import pygame
+import math
 from combat_effects import DamageNumber, HitFlash, AttackAnimation
 from data import generate_loot  # Add loot generation import
 
@@ -75,12 +76,14 @@ class Player:
         self.attack_damage = 50
 
     def handle_input(self, dt):
-        """Handle keyboard input for player movement"""
+        """Handle keyboard and mouse input for player movement"""
         keys = pygame.key.get_pressed()
         
-        # Movement handling
+        # Initialize movement vector
         self.vx = 0
         self.vy = 0
+        
+        # Keyboard movement (WASD)
         if keys[pygame.K_a]:
             self.vx = -self.speed
         if keys[pygame.K_d]:
@@ -90,6 +93,34 @@ class Player:
         if keys[pygame.K_s]:
             self.vy = self.speed
 
+        # Mouse movement
+        mouse_buttons = pygame.mouse.get_pressed()
+        if mouse_buttons[0]:  # Left mouse button
+            # Get mouse position relative to screen center
+            mx, my = pygame.mouse.get_pos()
+            screen_center_x = pygame.display.get_surface().get_width() // 2
+            screen_center_y = pygame.display.get_surface().get_height() // 2
+            
+            # Calculate direction vector
+            mouse_dx = mx - screen_center_x
+            mouse_dy = my - screen_center_y
+            
+            # Normalize the vector
+            mouse_distance = math.sqrt(mouse_dx**2 + mouse_dy**2)
+            if mouse_distance > 0:
+                mouse_dx /= mouse_distance
+                mouse_dy /= mouse_distance
+            
+            # Combine mouse and keyboard movement
+            self.vx += mouse_dx * self.speed
+            self.vy += mouse_dy * self.speed
+
+        # Normalize diagonal movement
+        if self.vx != 0 and self.vy != 0:
+            self.vx *= 0.7071  # 1/sqrt(2)
+            self.vy *= 0.7071
+
+        # Apply delta time to movement
         self.vx *= dt
         self.vy *= dt
 

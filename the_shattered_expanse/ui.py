@@ -265,7 +265,14 @@ class UIManager:
             )
             pygame.draw.rect(minimap_surface, (200, 200, 200), mini_rect)
         
-        # Draw buildings (blue)
+        # Draw buildings with faction-specific colors
+        faction_colors = {
+            "Automatons": (100, 100, 255),  # Blue-ish
+            "Scavengers": (255, 150, 50),   # Orange-ish
+            "Cog Preachers": (150, 50, 150)  # Purple-ish
+        }
+        
+        # Draw buildings from building system
         if building_system and hasattr(building_system, 'structures'):
             for structure in building_system.structures:
                 mini_rect = pygame.Rect(
@@ -276,13 +283,33 @@ class UIManager:
                 )
                 pygame.draw.rect(minimap_surface, (0, 100, 255), mini_rect)
         
-        # Draw NPCs (red)
+        # Draw city buildings with faction colors
+        for faction, buildings in cities.items():
+            color = faction_colors.get(faction, (100, 100, 100))
+            for building in buildings:
+                mini_rect = pygame.Rect(
+                    building.rect.x * scale_factor,
+                    building.rect.y * scale_factor,
+                    building.rect.width * scale_factor,
+                    building.rect.height * scale_factor
+                )
+                pygame.draw.rect(minimap_surface, color, mini_rect)
+        
+        # Draw NPCs with faction-specific colors
+        faction_colors = {
+            "Automatons": (100, 100, 255),  # Blue-ish
+            "Scavengers": (255, 150, 50),   # Orange-ish
+            "Cog Preachers": (150, 50, 150)  # Purple-ish
+        }
+
         for npc in npcs:
             mini_pos = (
                 int(npc.rect.centerx * scale_factor),
                 int(npc.rect.centery * scale_factor)
             )
-            pygame.draw.circle(minimap_surface, (255, 0, 0), mini_pos, 2)
+            # Use faction color for NPC dot, with fallback to red
+            npc_color = faction_colors.get(npc.faction, (255, 0, 0))
+            pygame.draw.circle(minimap_surface, npc_color, mini_pos, 2)
         
         # Draw lore fragments (yellow)
         if lore_system and hasattr(lore_system, 'fragments'):
@@ -439,7 +466,13 @@ class TabbedMenu:
         self.font = font
         self.active_tab = 0
         self.button_height = 30
+        self.is_game_paused = False  # New attribute to track game pause state
         self._create_button_rects()
+
+    def toggle_pause(self):
+        """Toggle the game pause state when menu is opened/closed"""
+        self.is_game_paused = not self.is_game_paused
+        return self.is_game_paused
 
     def _create_button_rects(self):
         # Divide the top area of the menu into equal button regions.
@@ -456,6 +489,7 @@ class TabbedMenu:
             for i, tab in enumerate(self.tabs):
                 if tab['button_rect'].collidepoint(event.pos):
                     self.active_tab = i
+                    # Optional: Add any additional tab selection logic if needed
 
     def draw(self, screen):
         # Draw the tab buttons.

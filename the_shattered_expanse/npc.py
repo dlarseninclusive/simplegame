@@ -161,7 +161,7 @@ class NPC:
             else:
                 self.wander(dt, obstacles)
 
-    def update(self, dt, obstacles, player, pathfinder=None):
+    def update(self, dt, obstacles, player, pathfinder=None, city_roads=None):
         """
         Decide what behavior to use each frame:
         - If player is near and we're hostile, chase or pathfind to them.
@@ -170,7 +170,7 @@ class NPC:
         # Before moving, remember last position
         self.old_pos = self.rect.topleft
         
-        self.choose_behavior(dt, obstacles, player, pathfinder)
+        self.choose_behavior(dt, obstacles, player, pathfinder, city_roads)
 
     def chase_player(self, dt, obstacles, player):
         """

@@ -1,4 +1,5 @@
 import pygame
+import random
 from camera import Camera
 from player import Player
 from environment import Environment
@@ -74,9 +75,11 @@ def main():
     clock = pygame.time.Clock()
 
     # Game state
-    global current_state, current_interior
+    global current_state, current_interior, game_paused
     current_state = "exterior"  # "exterior" or "interior"
     current_interior = None
+    game_paused = False
+    show_tabbed_menu = False
 
     # Create objects
     player = Player(2000, 2000)
@@ -278,7 +281,9 @@ def main():
                 if event.key == pygame.K_i:  # Toggle backpack
                     ui_manager.toggle_backpack_display()
                 if event.key == pygame.K_TAB:  # Toggle tabbed menu
+                    tabbed_menu.toggle_pause()
                     show_tabbed_menu = not show_tabbed_menu
+                    game_paused = tabbed_menu.is_game_paused
                 # Equipment hotkeys
                 if pygame.K_F1 <= event.key <= pygame.K_F6:
                     slot_index = event.key - pygame.K_F1
@@ -338,7 +343,7 @@ def main():
                     if slot_index < len(slots):
                         player.toggle_equipment_slot(slots[slot_index])
 
-        if not show_menu:
+        if not show_menu and not game_paused:
             keys = pygame.key.get_pressed()
 
             # Player
@@ -369,11 +374,38 @@ def main():
                             player.collect_resource(node)
                             quest_system.check_item_collection(player, node.resource_type)
 
+            # Generate roads between city centers
+            city_centers = [
+                (camera.world_width - 300, camera.world_height - 300),  # Automatons
+                (100, 100),  # Scavengers
+                (camera.world_width // 2 - 125, camera.world_height // 2 - 125)  # Cog Preachers
+            ]
+            city_roads = city_generator.generate_roads(city_centers)
+
             # NPC updates
             # Remove dead NPCs from the list if health <= 0
             for npc in npcs:
-                npc.update(dt, environment.obstacles, player, pathfinder)
+                npc.update(dt, environment.obstacles, player, pathfinder, city_roads)
             npcs = [n for n in npcs if n.health > 0]
+
+            # Render roads in the rendering section
+            if current_state == "exterior":
+                for road in city_roads:
+                    for i in range(len(road) - 1):
+                        start = road[i]
+                        end = road[i+1]
+                        start_x = start[0] - camera.offset_x
+                        start_y = start[1] - camera.offset_y
+                        end_x = end[0] - camera.offset_x
+                        end_y = end[1] - camera.offset_y
+                        
+                        # Draw road with varying width and slight randomness
+                        road_width = random.randint(15, 25)  # Varied road width
+                        pygame.draw.line(screen, (100, 100, 100), (start_x, start_y), (end_x, end_y), road_width)
+                        
+                        # Optional: Add road edge highlights
+                        edge_color = (120, 120, 120)
+                        pygame.draw.line(screen, edge_color, (start_x, start_y), (end_x, end_y), 2)
 
             # Factions & Quests
             quest_system.update_quests(player)
