@@ -418,7 +418,12 @@ def run(screen, clock, guide, scene_slug, tone):
     def on_anomaly_discovered(anomaly):
         discovered_anomalies.append(anomaly)
         # Show notification via the notifications subsystem
-        overlay.notifications.show_glitch(f"ANOMALY DETECTED: {anomaly.name}", duration=4.0)
+        try:
+            overlay.notifications.show_glitch(f"ANOMALY DETECTED: {anomaly.name}", duration=4.0)
+        except Exception as e:
+            print(f"Error showing anomaly notification: {e}")
+            # Fallback: just print to console
+            print(f"ANOMALY DISCOVERED: {anomaly.name}")
 
     game_loop.on_anomaly_discovered = on_anomaly_discovered
 
@@ -433,9 +438,10 @@ def run(screen, clock, guide, scene_slug, tone):
     instructions_text = [
         "Arrow keys: Move",
         "Space: Talk to NPC",
-        "G/E: Good/Evil",
+        "G/N/E: Align",
         "H: Help police",
         "M: Mute narrator",
+        "I: Toggle help",
         "Tab: Skip phase",
         "ESC: Pause menu",
     ]
@@ -491,6 +497,12 @@ def run(screen, clock, guide, scene_slug, tone):
                 elif event.key == pygame.K_e:
                     player.change_alignment("evil")
                     game_loop.on_player_aligned("evil")
+
+                elif event.key == pygame.K_n:
+                    player.change_alignment("neutral")
+                    game_loop.on_player_aligned("neutral")
+                    # Narrator comment on indecision
+                    narrator_queue.queue_line("I see you can't decide. How typical.")
 
                 elif event.key == pygame.K_i:
                     show_instructions = not show_instructions
