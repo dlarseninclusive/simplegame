@@ -388,7 +388,8 @@ def run(screen, clock, guide, scene_slug, tone):
     _register_npcs_with_overlay(overlay, all_npcs, plot_state)
 
     # Create narrator queue for pacing (shared between game loop and main loop)
-    narrator_queue = NarratorQueue(min_gap=5.0, max_queue=3)
+    # Slower narrator pacing - give player time to read instructions
+    narrator_queue = NarratorQueue(min_gap=10.0, max_queue=2)
 
     # Initialize game loop manager
     game_loop = GameLoopManager(
@@ -475,6 +476,10 @@ def run(screen, clock, guide, scene_slug, tone):
                     publish(PlotEvent.ESC_PRESS)
                     paused = not paused  # Toggle pause menu
                     pause_menu_selection = 0  # Reset selection
+                    # Stop narrator when pausing
+                    if paused and guide:
+                        guide.stop()
+                        overlay.audio.stop()
 
                 # Pause menu controls
                 elif paused:
@@ -760,13 +765,20 @@ def run(screen, clock, guide, scene_slug, tone):
 
         # Instructions panel
         if show_instructions:
-            inst_bg = pygame.Surface((170, 155))
+            # Wider panel to fit all text
+            inst_bg = pygame.Surface((220, 200))
             inst_bg.fill((40, 40, 40))
             inst_bg.set_alpha(180)
-            screen.blit(inst_bg, (WIDTH - 180, 10))
+            screen.blit(inst_bg, (WIDTH - 230, 10))
+
+            # Render each instruction with highlighted I key
             for i, line in enumerate(instructions_text):
-                text_surface = font.render(line, True, WHITE)
-                screen.blit(text_surface, (WIDTH - 170, 20 + i * 24))
+                # Highlight the I key line
+                if "I:" in line or "Toggle help" in line:
+                    text_surface = font.render(line, True, (255, 255, 100))  # Yellow highlight
+                else:
+                    text_surface = font.render(line, True, WHITE)
+                screen.blit(text_surface, (WIDTH - 220, 20 + i * 24))
 
         # Mute indicator
         if overlay.audio.muted:

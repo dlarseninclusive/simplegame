@@ -326,6 +326,54 @@ class TestCamera(unittest.TestCase):
         self.assertGreaterEqual(cam.y, 0)
 
 
+class TestNarratorQueue(unittest.TestCase):
+    """Tests for narrator queue pacing."""
+
+    def test_init(self):
+        """Test narrator queue initialization."""
+        from game_loop import NarratorQueue
+        queue = NarratorQueue(min_gap=10.0, max_queue=2)
+        self.assertEqual(queue.min_gap, 10.0)
+        self.assertEqual(queue.max_queue, 2)
+
+    def test_queue_line(self):
+        """Test queueing lines."""
+        from game_loop import NarratorQueue
+        queue = NarratorQueue(min_gap=10.0, max_queue=2)
+        queue.queue_line("Test line 1")
+        self.assertEqual(len(queue.queue), 1)
+
+    def test_min_gap_enforced(self):
+        """Test that minimum gap between lines is enforced."""
+        from game_loop import NarratorQueue
+        queue = NarratorQueue(min_gap=10.0, max_queue=2)
+        queue.queue_line("Line 1")
+
+        # First line should be available immediately
+        line = queue.update(0.1)
+        self.assertEqual(line, "Line 1")
+
+        # Queue another line
+        queue.queue_line("Line 2")
+
+        # Should NOT be available within min_gap
+        line = queue.update(5.0)  # Only 5 seconds passed
+        self.assertIsNone(line)
+
+        # Should be available after min_gap
+        line = queue.update(6.0)  # Now 11 seconds total
+        self.assertEqual(line, "Line 2")
+
+    def test_max_queue_limit(self):
+        """Test that queue doesn't exceed max size."""
+        from game_loop import NarratorQueue
+        queue = NarratorQueue(min_gap=1.0, max_queue=2)
+        queue.queue_line("Line 1")
+        queue.queue_line("Line 2")
+        queue.queue_line("Line 3")  # Should drop oldest
+        self.assertLessEqual(len(queue.queue), 2)
+
+
 if __name__ == '__main__':
     # Run with verbose output
     unittest.main(verbosity=2)
