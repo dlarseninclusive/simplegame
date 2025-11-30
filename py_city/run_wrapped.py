@@ -572,73 +572,73 @@ def run(screen, clock, guide, scene_slug, tone):
             dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
             player.move(dx, dy, city_map, dt)
 
-        # Camera follows player
+            # Update game loop (tutorial, phases, anomalies)
+            game_loop.update(dt, player.x, player.y, player_moving)
+
+            # Check for level completion
+            if game_loop.is_complete():
+                level_completed = True
+                running = False
+
+            # Update crime simulation (only during living city phase)
+            if game_loop.state.phase in (GamePhase.LIVING_CITY, GamePhase.SOMETHING_WRONG):
+                # Set night mode for crime bonus
+                crime_sim.set_night_mode(day_night.is_night())
+                crime_events = crime_sim.update(
+                    dt, criminals, police, civilians,
+                    player.x, player.y
+                )
+                # Queue narrator comments on crime events
+                for event in crime_events:
+                    if not overlay.audio.muted:
+                        lines = CRIME_NARRATOR_LINES.get(event, [])
+                        if lines:
+                            narrator_queue.queue_line(random.choice(lines))
+
+            # Process narrator queue - speak next line if ready
+            if guide and not overlay.audio.muted:
+                line_to_speak = narrator_queue.update(dt)
+                if line_to_speak:
+                    guide.speak_async(line_to_speak)
+
+            # Update NPCs
+            for npc in all_npcs:
+                if npc is talking_npc and dialog_timer > 0:
+                    continue  # Pause talking NPC
+                if not npc.in_jail:
+                    npc.move(dt)
+
+            # Update day/night cycle
+            time_event = day_night.update(dt)
+            if time_event and not overlay.audio.muted:
+                narrator_queue.queue_line(time_event)
+
+            # Update weather (rain, wind, temp) with current time of day
+            weather_event = weather.update(dt, day_night.get_time_of_day())
+            if weather_event and not overlay.audio.muted:
+                lines = RAIN_NARRATOR_LINES.get(weather_event, [])
+                if lines:
+                    narrator_queue.queue_line(random.choice(lines))
+
+            # Update window states based on time
+            lit_chance = day_night.get_window_lit_chance()
+            city_map.update_windows(dt, lit_chance)
+
+            # Update exit portal pulse
+            if exit_portal["active"]:
+                exit_portal["pulse"] += dt * 3
+
+            # Dialog timer
+            if dialog_timer > 0:
+                dialog_timer -= dt
+                if dialog_timer <= 0:
+                    talking_npc = None
+
+        # Camera follows player (even when paused for smooth visuals)
         camera.follow(player.x + player.size // 2, player.y + player.size // 2)
 
-        # Update game loop (tutorial, phases, anomalies)
-        game_loop.update(dt, player.x, player.y, player_moving)
-
-        # Check for level completion
-        if game_loop.is_complete():
-            level_completed = True
-            running = False
-
-        # Update crime simulation (only during living city phase)
-        if game_loop.state.phase in (GamePhase.LIVING_CITY, GamePhase.SOMETHING_WRONG):
-            # Set night mode for crime bonus
-            crime_sim.set_night_mode(day_night.is_night())
-            crime_events = crime_sim.update(
-                dt, criminals, police, civilians,
-                player.x, player.y
-            )
-            # Queue narrator comments on crime events
-            for event in crime_events:
-                if not overlay.audio.muted:
-                    lines = CRIME_NARRATOR_LINES.get(event, [])
-                    if lines:
-                        narrator_queue.queue_line(random.choice(lines))
-
-        # Process narrator queue - speak next line if ready
-        if guide and not overlay.audio.muted:
-            line_to_speak = narrator_queue.update(dt)
-            if line_to_speak:
-                guide.speak_async(line_to_speak)
-
-        # Update NPCs
-        for npc in all_npcs:
-            if npc is talking_npc and dialog_timer > 0:
-                continue  # Pause talking NPC
-            if not npc.in_jail:
-                npc.move(dt)
-
-        # Update day/night cycle
-        time_event = day_night.update(dt)
-        if time_event and not overlay.audio.muted:
-            narrator_queue.queue_line(time_event)
-
-        # Update weather (rain, wind, temp) with current time of day
-        weather_event = weather.update(dt, day_night.get_time_of_day())
-        if weather_event and not overlay.audio.muted:
-            lines = RAIN_NARRATOR_LINES.get(weather_event, [])
-            if lines:
-                narrator_queue.queue_line(random.choice(lines))
-
-        # Update window states based on time
-        lit_chance = day_night.get_window_lit_chance()
-        city_map.update_windows(dt, lit_chance)
-
-        # Update overlay
+        # Update overlay (even when paused for UI responsiveness)
         overlay.update(dt)
-
-        # Update exit portal pulse
-        if exit_portal["active"]:
-            exit_portal["pulse"] += dt * 3
-
-        # Dialog timer
-        if dialog_timer > 0:
-            dialog_timer -= dt
-            if dialog_timer <= 0:
-                talking_npc = None
 
         # --- Rendering ---
         # Draw city with day/night lighting
