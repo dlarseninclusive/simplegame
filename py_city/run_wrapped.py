@@ -782,6 +782,10 @@ def run(screen, clock, guide, scene_slug, tone):
         # Draw overlay on top
         overlay.draw(screen)
 
+        # Draw pause menu if paused
+        if paused:
+            _draw_pause_menu(screen, pause_menu_options, pause_menu_selection, font)
+
         pygame.display.flip()
 
     # Cleanup and save state
@@ -850,6 +854,60 @@ def _draw_minimap(screen: pygame.Surface, screen_width: int,
     pygame.draw.rect(minimap, (100, 100, 100), (0, 0, map_size, map_size), 1)
 
     screen.blit(minimap, (map_x, map_y))
+
+
+def _draw_pause_menu(screen: pygame.Surface, options: list, selection: int, font: pygame.font.Font):
+    """Draw the pause menu overlay."""
+    # Semi-transparent dark overlay
+    overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    screen.blit(overlay, (0, 0))
+
+    # Menu box
+    menu_width = 400
+    menu_height = 250
+    menu_x = (screen.get_width() - menu_width) // 2
+    menu_y = (screen.get_height() - menu_height) // 2
+
+    # Dark horror-themed background
+    menu_bg = pygame.Surface((menu_width, menu_height))
+    menu_bg.fill((20, 20, 25))
+
+    # Border with subtle red glow
+    pygame.draw.rect(menu_bg, (80, 40, 40), (0, 0, menu_width, menu_height), 3)
+    pygame.draw.rect(menu_bg, (120, 60, 60), (2, 2, menu_width - 4, menu_height - 4), 1)
+
+    screen.blit(menu_bg, (menu_x, menu_y))
+
+    # Title
+    title_font = pygame.font.Font(None, 48)
+    title_text = title_font.render("PAUSED", True, (200, 200, 210))
+    title_rect = title_text.get_rect(centerx=screen.get_width() // 2, y=menu_y + 30)
+    screen.blit(title_text, title_rect)
+
+    # Menu options
+    option_start_y = menu_y + 100
+    for i, option in enumerate(options):
+        is_selected = (i == selection)
+
+        # Highlight selected option
+        if is_selected:
+            color = (220, 180, 180)
+            # Selection indicator
+            indicator = font.render(">", True, (200, 100, 100))
+            screen.blit(indicator, (menu_x + 60, option_start_y + i * 50))
+        else:
+            color = (140, 140, 150)
+
+        option_text = font.render(option, True, color)
+        option_rect = option_text.get_rect(centerx=screen.get_width() // 2, y=option_start_y + i * 50)
+        screen.blit(option_text, option_rect)
+
+    # Instructions
+    inst_font = pygame.font.Font(None, 20)
+    inst_text = inst_font.render("Use Arrow Keys to navigate, Enter/Space to select", True, (120, 120, 130))
+    inst_rect = inst_text.get_rect(centerx=screen.get_width() // 2, y=menu_y + menu_height - 30)
+    screen.blit(inst_text, inst_rect)
 
 
 def _register_npcs_with_overlay(overlay, npcs, plot_state):
