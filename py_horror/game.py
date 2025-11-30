@@ -18,6 +18,7 @@ class Game:
         self.near_entrance = False
         self.show_instructions = True
         self.show_minimap = False
+        self.paused = False
         self.camera_x = 0
         self.camera_y = 0
         self.effects = pygame.sprite.Group()
@@ -42,7 +43,7 @@ class Game:
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        running = False
+                        self.paused = not self.paused
                     elif event.key == pygame.K_SPACE:
                         self.try_enter_exit_building()
                     elif event.key == pygame.K_i:
@@ -50,16 +51,18 @@ class Game:
                     elif event.key == pygame.K_m:
                         self.show_minimap = not self.show_minimap
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left mouse button
-                        self.handle_left_click(event.pos)
-                    elif event.button == 3:  # Right mouse button
-                        self.handle_right_click(event.pos)
+                    if not self.paused:
+                        if event.button == 1:  # Left mouse button
+                            self.handle_left_click(event.pos)
+                        elif event.button == 3:  # Right mouse button
+                            self.handle_right_click(event.pos)
 
-            self.update()
-            
-            if self.current_scene == "village":
-                self.update_shader_effects()
-            
+            if not self.paused:
+                self.update()
+
+                if self.current_scene == "village":
+                    self.update_shader_effects()
+
             self.draw()
 
             pygame.display.flip()
@@ -322,6 +325,9 @@ class Game:
         if self.show_minimap:
             self.draw_minimap()
 
+        if self.paused:
+            self.draw_pause_menu()
+
     def draw_shader_effects(self):
         self.shader_surface.fill((105, 128, 180))  # Fill with a blue-ish color
 
@@ -361,14 +367,18 @@ class Game:
             "- Press 'M' to toggle minimap",
             "- Press 'ESC' to exit the game"
         ]
-        
+
         instruction_surface = pygame.Surface((WIDTH, HEIGHT))
         instruction_surface.set_alpha(200)
         instruction_surface.fill(BLACK)
         self.screen.blit(instruction_surface, (0, 0))
 
         for i, line in enumerate(instructions):
-            text = small_font.render(line, True, WHITE)
+            # Highlight the I key line in yellow
+            if "Press 'I'" in line or "toggle instructions" in line:
+                text = small_font.render(line, True, (255, 255, 100))
+            else:
+                text = small_font.render(line, True, WHITE)
             self.screen.blit(text, (20, 20 + i * 30))
 
     def draw_minimap(self):
@@ -397,6 +407,41 @@ class Game:
         pygame.draw.circle(minimap_surface, RED, (player_x, player_y), 2)
 
         self.screen.blit(minimap_surface, (WIDTH - minimap_size - 10, 10))
+
+    def draw_pause_menu(self):
+        # Semi-transparent dark overlay
+        overlay = pygame.Surface((WIDTH, HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((20, 20, 30))
+        self.screen.blit(overlay, (0, 0))
+
+        # Pause menu box
+        menu_width, menu_height = 400, 200
+        menu_x = (WIDTH - menu_width) // 2
+        menu_y = (HEIGHT - menu_height) // 2
+
+        # Draw menu background
+        menu_bg = pygame.Surface((menu_width, menu_height))
+        menu_bg.fill((40, 40, 50))
+        pygame.draw.rect(menu_bg, (100, 100, 120), (0, 0, menu_width, menu_height), 3)
+        self.screen.blit(menu_bg, (menu_x, menu_y))
+
+        # Pause text
+        pause_text = font.render("PAUSED", True, (220, 220, 230))
+        text_rect = pause_text.get_rect(center=(WIDTH // 2, menu_y + 50))
+        self.screen.blit(pause_text, text_rect)
+
+        # Instructions
+        instructions = [
+            "Press ESC to resume",
+            "Press I for instructions",
+            "Press M for minimap"
+        ]
+
+        for i, line in enumerate(instructions):
+            text = small_font.render(line, True, (180, 180, 190))
+            text_rect = text.get_rect(center=(WIDTH // 2, menu_y + 100 + i * 30))
+            self.screen.blit(text, text_rect)
 
 if __name__ == "__main__":
     game = Game()

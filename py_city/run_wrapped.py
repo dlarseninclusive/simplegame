@@ -1104,7 +1104,7 @@ if __name__ == "__main__":
         sys.path.insert(0, str(root))
 
     pygame.init()
-    screen = pygame.display.set_mode((1024, 768))
+    screen = pygame.display.set_mode((1280, 720))
     pygame.display.set_caption("Py City - The Tutorial")
     clock = pygame.time.Clock()
 
