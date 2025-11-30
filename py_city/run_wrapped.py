@@ -410,6 +410,8 @@ def run(screen, clock, guide, scene_slug, tone):
         exit_portal["x"] = x
         exit_portal["y"] = y
         exit_portal["active"] = True
+        # Narrator commentary on the exit appearing
+        narrator_queue.queue_line("The exit appears. But exits in places like this... they're never quite what they seem.", priority=True)
 
     game_loop.on_exit_ready = on_exit_ready
 
@@ -420,11 +422,18 @@ def run(screen, clock, guide, scene_slug, tone):
         discovered_anomalies.append(anomaly)
         # Show notification via the notifications subsystem
         try:
-            overlay.notifications.show_glitch(f"ANOMALY DETECTED: {anomaly.name}", duration=4.0)
+            # Show anomaly name and description
+            overlay.notifications.show_glitch(f"ANOMALY: {anomaly.name}", duration=5.0)
+            # Queue the anomaly's story/description for the narrator
+            if anomaly.description:
+                narrator_queue.queue_line(anomaly.description, priority=True)
+            # Narrator's reaction after a moment
+            if anomaly.narrator_reaction:
+                narrator_queue.queue_line(anomaly.narrator_reaction, priority=False)
         except Exception as e:
             print(f"Error showing anomaly notification: {e}")
             # Fallback: just print to console
-            print(f"ANOMALY DISCOVERED: {anomaly.name}")
+            print(f"ANOMALY DISCOVERED: {anomaly.name} - {anomaly.description}")
 
     game_loop.on_anomaly_discovered = on_anomaly_discovered
 
@@ -653,12 +662,27 @@ def run(screen, clock, guide, scene_slug, tone):
         # Draw anomaly markers (before NPCs so they appear under)
         for anomaly in game_loop.state.anomalies:
             if not anomaly.discovered:
-                # Undiscovered anomalies have subtle shimmer
+                # Undiscovered anomalies have pulsing effect
                 ax, ay = camera.apply(anomaly.x, anomaly.y)
                 if 0 <= ax < WIDTH and 0 <= ay < HEIGHT:
-                    shimmer = int(abs(math.sin(game_loop.state.phase_timer * 2)) * 30)
-                    pygame.draw.circle(screen, (50 + shimmer, 50 + shimmer, 80 + shimmer),
-                                       (int(ax), int(ay)), 8, 2)
+                    # Pulsing radius and opacity for visibility
+                    pulse = abs(math.sin(game_loop.state.phase_timer * 1.5))
+                    radius = int(10 + pulse * 8)  # Pulse between 10-18 pixels
+
+                    # Outer glow rings
+                    for i in range(3):
+                        ring_alpha = int((1 - i/3) * 60 * pulse)
+                        ring_radius = radius + i * 8
+                        ring_color = (100 + int(pulse * 50), 80 + int(pulse * 70), 150 + int(pulse * 50))
+                        glow_surf = pygame.Surface((ring_radius * 4, ring_radius * 4), pygame.SRCALPHA)
+                        pygame.draw.circle(glow_surf, (*ring_color, ring_alpha),
+                                          (ring_radius * 2, ring_radius * 2), ring_radius, 3)
+                        screen.blit(glow_surf, (int(ax) - ring_radius * 2, int(ay) - ring_radius * 2))
+
+                    # Inner pulsing core
+                    core_color = (120 + int(pulse * 60), 100 + int(pulse * 80), 170 + int(pulse * 60))
+                    pygame.draw.circle(screen, core_color, (int(ax), int(ay)), radius, 2)
+                    pygame.draw.circle(screen, (150, 130, 200), (int(ax), int(ay)), max(2, radius - 4))
 
         # Draw exit portal
         if exit_portal["active"]:
