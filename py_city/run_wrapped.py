@@ -708,16 +708,27 @@ def run(screen, clock, guide, scene_slug, tone):
                 screen.blit(exit_text, (int(ex) - 15, int(ey) - 8))
 
         # Draw crime indicators
+        crime_font = pygame.font.Font(None, 20)
         for crime in crime_sim.active_crimes:
             cx, cy = camera.apply(crime.x, crime.y)
             if 0 <= cx < WIDTH and 0 <= cy < HEIGHT:
                 if crime.being_chased:
                     # Red flashing indicator for chase
                     flash = int(abs(math.sin(game_loop.state.phase_timer * 8)) * 255)
+                    # Flashing red circle
                     pygame.draw.circle(screen, (flash, 0, 0), (int(cx), int(cy) - 40), 8)
+                    # "CHASE" text
+                    if flash > 128:  # Only show text when bright
+                        chase_text = crime_font.render("CHASE", True, (255, flash, flash))
+                        screen.blit(chase_text, (int(cx) - 25, int(cy) - 60))
                 else:
-                    # Yellow indicator for crime in progress
-                    pygame.draw.circle(screen, (255, 200, 0), (int(cx), int(cy) - 40), 6)
+                    # Flashing red indicator for crime in progress
+                    flash = int(abs(math.sin(game_loop.state.phase_timer * 4)) * 200 + 55)
+                    pygame.draw.circle(screen, (flash, 0, 0), (int(cx), int(cy) - 40), 8)
+                    # "CRIME" text
+                    if flash > 128:  # Only show text when bright
+                        crime_text = crime_font.render("CRIME", True, (255, flash // 2, flash // 2))
+                        screen.blit(crime_text, (int(cx) - 25, int(cy) - 60))
 
         # Draw NPCs
         for npc in all_npcs:
