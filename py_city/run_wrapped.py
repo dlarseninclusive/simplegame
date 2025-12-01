@@ -121,6 +121,12 @@ class CityNPC:
         self.in_building = False
         self.breaking_in = False
 
+        # Trust/Hope system
+        self.trust = 0  # -100 to 100, starts neutral
+        self.times_helped = 0  # Track how many times player helped them
+        self.has_secret = random.random() < 0.3  # 30% chance NPC has a secret to share
+        self.secret_revealed = False
+
         # Pathfinding
         self.path = []
         self.path_index = 0
@@ -195,6 +201,32 @@ class CityNPC:
             pygame.draw.circle(screen, (255, 255, 0),
                                (int(screen_x + self.size / 2),
                                 int(screen_y + self.size / 2)), 5)
+
+        # Trust indicator (shows when trust > 0)
+        if self.trust > 0:
+            trust_color = (100, 200, 255) if self.trust < 50 else (150, 255, 150)
+            pygame.draw.circle(screen, trust_color,
+                               (int(screen_x + self.size - 5), int(screen_y + 5)), 3)
+
+    def increase_trust(self, amount: int = 20):
+        """Increase NPC trust level."""
+        self.trust = min(100, self.trust + amount)
+        self.times_helped += 1
+
+    def get_dialogue_tier(self) -> str:
+        """Get dialogue tier based on trust level."""
+        if self.trust < 20:
+            return "suspicious"
+        elif self.trust < 50:
+            return "neutral"
+        elif self.trust < 80:
+            return "friendly"
+        else:
+            return "trusting"
+
+    def can_reveal_secret(self) -> bool:
+        """Check if NPC can reveal their secret."""
+        return self.has_secret and not self.secret_revealed and self.trust >= 60
 
 
 class CityPlayer:
@@ -553,6 +585,28 @@ def run(screen, clock, guide, scene_slug, tone):
                     if crime:
                         game_loop.on_player_intervention(True)
                         player.karma += 5
+                        # Increase trust with nearby civilians who witness the help
+                        for npc in all_npcs:
+                            if npc.type in ["civilian", "police"]:
+                                dx = npc.x - player.x
+                                dy = npc.y - player.y
+                                if math.sqrt(dx * dx + dy * dy) < 200:  # Nearby radius
+                                    npc.increase_trust(15)
+                        overlay.notifications.show_glitch("They notice your help. Trust grows.", 2.0, "top_right")
+
+                elif event.key == pygame.K_j:
+                    # Join crime - loses karma and trust
+                    crime = crime_sim.player_intervene(player.x, player.y, False)
+                    if crime:
+                        game_loop.on_player_intervention(False)
+                        player.karma -= 15
+                        # Decrease trust with nearby NPCs who witness the crime
+                        for npc in all_npcs:
+                            dx = npc.x - player.x
+                            dy = npc.y - player.y
+                            if math.sqrt(dx * dx + dy * dy) < 200:
+                                npc.trust = max(-100, npc.trust - 20)
+                        overlay.notifications.show_glitch("They saw what you did. They won't forget.", 2.0, "top_right")
 
                 elif event.key == pygame.K_SPACE:
                     # NPC interaction
@@ -560,6 +614,11 @@ def run(screen, clock, guide, scene_slug, tone):
                     if interacted:
                         npc_id = f"npc_{id(interacted)}"
                         situation = _get_situation(interacted, player, plot_state)
+
+                        # Mark secret as revealed if NPC shares it
+                        if situation == "reveal_secret":
+                            interacted.secret_revealed = True
+
                         overlay.show_npc_dialogue(npc_id, "", situation)
                         dialog_timer = 4.0
                         talking_npc = interacted
@@ -1068,6 +1127,10 @@ def _get_situation(npc: CityNPC, player: CityPlayer, plot_state):
 
     stage = plot_state.get_stage()
 
+    # Trust-based situations (high priority)
+    if npc.can_reveal_secret():
+        return "reveal_secret"
+
     if npc.in_jail:
         return "imprisoned"
     if npc.health < 50:
@@ -1081,6 +1144,13 @@ def _get_situation(npc: CityNPC, player: CityPlayer, plot_state):
         return "threatened"
     if player.karma < -5:
         return "afraid"
+
+    # Trust tier affects tone
+    trust_tier = npc.get_dialogue_tier()
+    if trust_tier == "trusting":
+        return "trusting"
+    elif trust_tier == "friendly":
+        return "friendly"
 
     if stage == HorrorStage.FINALE:
         return "breaking"
