@@ -176,22 +176,56 @@ class Camera:
         self.smoothing = 0.1  # Lower = smoother/slower following
 
     def follow(self, target_x: float, target_y: float):
-        """Smoothly follow a target position."""
+        """Smoothly follow a target position with wraparound support."""
         # Target camera position (centered on target)
         target_cam_x = target_x - self.screen_width // 2
         target_cam_y = target_y - self.screen_height // 2
+
+        # Handle wraparound for smooth following across edges
+        # Check if target wrapped around and adjust camera accordingly
+        dx = target_cam_x - self.x
+        dy = target_cam_y - self.y
+
+        # If distance is more than half world, target likely wrapped
+        if abs(dx) > self.world_width / 2:
+            if dx > 0:
+                target_cam_x -= self.world_width
+            else:
+                target_cam_x += self.world_width
+
+        if abs(dy) > self.world_height / 2:
+            if dy > 0:
+                target_cam_y -= self.world_height
+            else:
+                target_cam_y += self.world_height
 
         # Smooth interpolation
         self.x += (target_cam_x - self.x) * self.smoothing
         self.y += (target_cam_y - self.y) * self.smoothing
 
-        # Clamp to world bounds
-        self.x = max(0, min(self.x, self.world_width - self.screen_width))
-        self.y = max(0, min(self.y, self.world_height - self.screen_height))
+        # Wraparound camera position (instead of clamping)
+        self.x = self.x % self.world_width
+        self.y = self.y % self.world_height
 
     def apply(self, world_x: float, world_y: float) -> Tuple[int, int]:
-        """Convert world coordinates to screen coordinates."""
-        return (int(world_x - self.x), int(world_y - self.y))
+        """Convert world coordinates to screen coordinates with wraparound."""
+        # Basic screen position
+        screen_x = world_x - self.x
+        screen_y = world_y - self.y
+
+        # Handle wraparound: if object is far off screen, it might be wrapping
+        # Normalize to closest representation
+        if screen_x < -self.world_width / 2:
+            screen_x += self.world_width
+        elif screen_x > self.world_width / 2:
+            screen_x -= self.world_width
+
+        if screen_y < -self.world_height / 2:
+            screen_y += self.world_height
+        elif screen_y > self.world_height / 2:
+            screen_y -= self.world_height
+
+        return (int(screen_x), int(screen_y))
 
     def apply_rect(self, rect: pygame.Rect) -> pygame.Rect:
         """Convert a world rect to screen rect."""

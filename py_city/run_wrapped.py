@@ -246,7 +246,7 @@ class CityPlayer:
         self.world_height = world_height
 
     def move(self, dx: int, dy: int, city_map: CityMap, dt: float):
-        """Move with collision detection."""
+        """Move with collision detection and wraparound edges."""
         move_speed = self.speed * dt * 60
 
         new_x = self.x + dx * move_speed
@@ -255,8 +255,20 @@ class CityPlayer:
         # Check collision
         new_rect = pygame.Rect(new_x, new_y, self.size, self.size)
         if not city_map.is_colliding(new_rect):
-            self.x = max(0, min(new_x, self.world_width - self.size))
-            self.y = max(0, min(new_y, self.world_height - self.size))
+            # Wraparound edges (Pac-Man style)
+            if new_x < 0:
+                self.x = self.world_width - self.size
+            elif new_x > self.world_width - self.size:
+                self.x = 0
+            else:
+                self.x = new_x
+
+            if new_y < 0:
+                self.y = self.world_height - self.size
+            elif new_y > self.world_height - self.size:
+                self.y = 0
+            else:
+                self.y = new_y
 
     def draw(self, screen: pygame.Surface, camera: Camera):
         """Draw player with health bar."""
