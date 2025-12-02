@@ -474,8 +474,8 @@ def run(screen, clock, guide, scene_slug, tone):
 
         # Show notification via the notifications subsystem
         try:
-            # Show anomaly name and description
-            overlay.notifications.show_glitch(f"ANOMALY: {anomaly.name}", duration=5.0)
+            # Show anomaly name and description (centered and large)
+            overlay.notifications.show_glitch(f"ANOMALY: {anomaly.name}", duration=5.0, position="center")
             # Queue the anomaly's story/description for the narrator
             if anomaly.description:
                 narrator_queue.queue_line(anomaly.description, priority=True)
