@@ -855,6 +855,18 @@ class GameLoopManager:
                 "Evil. How... predictable. The city shapes us all."
             )
 
+    def on_player_attacked(self, npc_type: str, fatal: bool = False):
+        """Called when player attacks an NPC."""
+        # Track attacks for horror progression
+        if not hasattr(self.state, 'attacks'):
+            self.state.attacks = 0
+        self.state.attacks += 1
+
+        if fatal:
+            if not hasattr(self.state, 'kills'):
+                self.state.kills = 0
+            self.state.kills += 1
+
     def on_player_intervention(self, helped_police: bool):
         """Called when player intervenes in a crime."""
         self.state.player_interventions += 1

@@ -499,12 +499,15 @@ def run(screen, clock, guide, scene_slug, tone):
     # Instructions
     instructions_text = [
         "Arrow keys: Move",
-        "Space: Talk to NPC",
-        "G/N/E: Align",
+        "Right-click: Move to",
+        "E: Talk to NPC",
+        "Space/Click: Attack",
+        "G/N: Align",
         "H: Help police",
         "M: Mute narrator",
         "I: Toggle help",
-        "Tab: Skip phase",
+        "Tab: Status menu",
+        "`: Skip phase",
         "ESC: Pause menu",
     ]
     show_instructions = True
@@ -514,11 +517,23 @@ def run(screen, clock, guide, scene_slug, tone):
     pause_menu_selection = 0  # 0 = Resume, 1 = Exit to Main
     pause_menu_options = ["Resume Game", "Exit to Main Menu"]
 
+    # Exit portal choice menu
+    exit_menu_active = False
+    exit_menu_selection = 0
+    exit_menu_options = ["Keep Exploring", "Move to Py Horror"]
+
+    # Status/inventory panel
+    show_status_panel = False
+
+    # Click-to-move target
+    move_target = None  # (x, y) world coordinates or None
+
     # Start the game loop
     game_loop.start()
 
     running = True
     level_completed = False
+    player_choice = "continue"  # "continue" or "next_level"
 
     while running:
         dt = clock.tick(60) / 1000.0
@@ -535,12 +550,34 @@ def run(screen, clock, guide, scene_slug, tone):
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     publish(PlotEvent.ESC_PRESS)
-                    paused = not paused  # Toggle pause menu
-                    pause_menu_selection = 0  # Reset selection
-                    # Stop narrator when pausing
-                    if paused and guide:
-                        guide.stop()
-                        overlay.audio.stop()
+                    # Close any open menus first, then toggle pause
+                    if exit_menu_active:
+                        exit_menu_active = False
+                    elif show_status_panel:
+                        show_status_panel = False
+                    else:
+                        paused = not paused
+                        pause_menu_selection = 0
+                        if paused and guide:
+                            guide.stop()
+                            overlay.audio.stop()
+
+                # Exit portal choice menu controls
+                elif exit_menu_active:
+                    if event.key == pygame.K_UP or event.key == pygame.K_LEFT:
+                        exit_menu_selection = (exit_menu_selection - 1) % len(exit_menu_options)
+                    elif event.key == pygame.K_DOWN or event.key == pygame.K_RIGHT:
+                        exit_menu_selection = (exit_menu_selection + 1) % len(exit_menu_options)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        if exit_menu_selection == 0:  # Keep Exploring
+                            exit_menu_active = False
+                            game_loop.state.phase = GamePhase.LIVING_CITY  # Reset to exploration
+                            narrator_queue.queue_line("You choose to linger. The city welcomes you back.")
+                        elif exit_menu_selection == 1:  # Move to Py Horror
+                            level_completed = True
+                            player_choice = "next_level"
+                            running = False
+                    continue
 
                 # Pause menu controls
                 elif paused:
@@ -553,21 +590,15 @@ def run(screen, clock, guide, scene_slug, tone):
                             paused = False
                         elif pause_menu_selection == 1:  # Exit to Main
                             running = False
-                    # Skip other inputs while paused
                     continue
 
                 elif event.key == pygame.K_g:
                     player.change_alignment("good")
                     game_loop.on_player_aligned("good")
 
-                elif event.key == pygame.K_e:
-                    player.change_alignment("evil")
-                    game_loop.on_player_aligned("evil")
-
                 elif event.key == pygame.K_n:
                     player.change_alignment("neutral")
                     game_loop.on_player_aligned("neutral")
-                    # Narrator comment on indecision
                     narrator_queue.queue_line("I see you can't decide. How typical.")
 
                 elif event.key == pygame.K_i:
@@ -583,21 +614,23 @@ def run(screen, clock, guide, scene_slug, tone):
                         print("Narrator unmuted")
 
                 elif event.key == pygame.K_TAB:
-                    # Skip to next phase
+                    # Toggle status panel (inventory, faction, quest)
+                    show_status_panel = not show_status_panel
+
+                elif event.key == pygame.K_BACKQUOTE:  # ` key - skip phase
                     current = game_loop.state.phase
                     if current == GamePhase.TUTORIAL:
                         game_loop._transition_to_phase(GamePhase.LIVING_CITY)
                     elif current == GamePhase.LIVING_CITY:
                         game_loop._transition_to_phase(GamePhase.SOMETHING_WRONG)
                     elif current == GamePhase.SOMETHING_WRONG:
-                        # Mark enough anomalies as discovered
                         for anomaly in game_loop.state.anomalies[:5]:
                             anomaly.discovered = True
                         game_loop.state.anomalies_discovered = 5
                         game_loop._transition_to_phase(GamePhase.EXIT_SEARCH)
                     elif current == GamePhase.EXIT_SEARCH:
                         game_loop._transition_to_phase(GamePhase.COMPLETED)
-                    narrator_queue.clear()  # Clear queued lines on skip
+                    narrator_queue.clear()
 
                 elif event.key == pygame.K_h:
                     # Help police with nearby crime
@@ -605,12 +638,11 @@ def run(screen, clock, guide, scene_slug, tone):
                     if crime:
                         game_loop.on_player_intervention(True)
                         player.karma += 5
-                        # Increase trust with nearby civilians who witness the help
                         for npc in all_npcs:
                             if npc.type in ["civilian", "police"]:
                                 dx = npc.x - player.x
                                 dy = npc.y - player.y
-                                if math.sqrt(dx * dx + dy * dy) < 200:  # Nearby radius
+                                if math.sqrt(dx * dx + dy * dy) < 200:
                                     npc.increase_trust(15)
                         overlay.notifications.show_glitch("They notice your help. Trust grows.", 2.0, "top_right")
 
@@ -620,7 +652,6 @@ def run(screen, clock, guide, scene_slug, tone):
                     if crime:
                         game_loop.on_player_intervention(False)
                         player.karma -= 15
-                        # Decrease trust with nearby NPCs who witness the crime
                         for npc in all_npcs:
                             dx = npc.x - player.x
                             dy = npc.y - player.y
@@ -628,8 +659,8 @@ def run(screen, clock, guide, scene_slug, tone):
                                 npc.trust = max(-100, npc.trust - 20)
                         overlay.notifications.show_glitch("They saw what you did. They won't forget.", 2.0, "top_right")
 
-                elif event.key == pygame.K_SPACE:
-                    # NPC interaction
+                elif event.key == pygame.K_e:
+                    # E key - NPC interaction
                     interacted = player.interact(all_npcs)
                     if interacted:
                         npc_id = f"npc_{id(interacted)}"
@@ -645,7 +676,26 @@ def run(screen, clock, guide, scene_slug, tone):
                         idle_timer = 0.0
                         game_loop.on_player_talked(interacted.type)
 
-        # Skip game updates when paused
+                elif event.key == pygame.K_SPACE:
+                    # Space - Attack action
+                    _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
+
+            # Mouse button events
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_x, mouse_y = event.pos
+                if event.button == 3:  # Right-click - move to location
+                    # Convert screen pos to world pos
+                    world_x = mouse_x + camera.x
+                    world_y = mouse_y + camera.y
+                    # Wraparound
+                    world_x = world_x % city_config.world_width
+                    world_y = world_y % city_config.world_height
+                    move_target = (world_x, world_y)
+                elif event.button == 1:  # Left-click - attack
+                    if not exit_menu_active and not paused and not show_status_panel:
+                        _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
+
+        # Skip game updates when paused or in exit menu
         if not paused:
             # Track idle time
             if (player.x, player.y) == last_player_pos:
@@ -659,19 +709,53 @@ def run(screen, clock, guide, scene_slug, tone):
                 player_moving = True
                 last_player_pos = (player.x, player.y)
 
-            # Player movement
+            # Player movement - arrow keys OR click-to-move
             keys = pygame.key.get_pressed()
             dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
             dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
+
+            # Click-to-move takes priority if active and no keyboard input
+            if move_target and dx == 0 and dy == 0:
+                target_x, target_y = move_target
+                # Calculate direction to target (handle wraparound)
+                diff_x = target_x - player.x
+                diff_y = target_y - player.y
+
+                # Handle wraparound - find shortest path
+                if abs(diff_x) > city_config.world_width / 2:
+                    if diff_x > 0:
+                        diff_x -= city_config.world_width
+                    else:
+                        diff_x += city_config.world_width
+                if abs(diff_y) > city_config.world_height / 2:
+                    if diff_y > 0:
+                        diff_y -= city_config.world_height
+                    else:
+                        diff_y += city_config.world_height
+
+                dist = math.sqrt(diff_x * diff_x + diff_y * diff_y)
+                if dist < 10:  # Arrived at target
+                    move_target = None
+                else:
+                    # Normalize direction
+                    dx = diff_x / dist if dist > 0 else 0
+                    dy = diff_y / dist if dist > 0 else 0
+            elif dx != 0 or dy != 0:
+                # Keyboard movement cancels click-to-move
+                move_target = None
+
             player.move(dx, dy, city_map, dt)
 
             # Update game loop (tutorial, phases, anomalies)
             game_loop.update(dt, player.x, player.y, player_moving)
 
-            # Check for level completion
-            if game_loop.is_complete():
-                level_completed = True
-                running = False
+            # Check for level completion - show exit menu instead of auto-exiting
+            if game_loop.is_complete() and not exit_menu_active:
+                exit_menu_active = True
+                exit_menu_selection = 0
+                if guide:
+                    guide.stop()
+                narrator_queue.queue_line("A choice presents itself. Stay, or move forward?", priority=True)
 
             # Update crime simulation (only during living city phase)
             if game_loop.state.phase in (GamePhase.LIVING_CITY, GamePhase.SOMETHING_WRONG):
@@ -960,9 +1044,23 @@ def run(screen, clock, guide, scene_slug, tone):
         # Draw overlay on top
         overlay.draw(screen)
 
+        # Draw status panel if open
+        if show_status_panel:
+            _draw_status_panel(screen, player, game_loop, font)
+
         # Draw pause menu if paused
         if paused:
             _draw_pause_menu(screen, pause_menu_options, pause_menu_selection, font)
+
+        # Draw exit choice menu
+        if exit_menu_active:
+            _draw_exit_menu(screen, exit_menu_options, exit_menu_selection, font)
+
+        # Draw move target indicator
+        if move_target:
+            target_screen_x, target_screen_y = camera.apply(move_target[0], move_target[1])
+            pygame.draw.circle(screen, (100, 255, 100), (int(target_screen_x), int(target_screen_y)), 8, 2)
+            pygame.draw.circle(screen, (150, 255, 150), (int(target_screen_x), int(target_screen_y)), 4)
 
         pygame.display.flip()
 
@@ -1088,6 +1186,170 @@ def _draw_pause_menu(screen: pygame.Surface, options: list, selection: int, font
     screen.blit(inst_text, inst_rect)
 
 
+def _draw_exit_menu(screen: pygame.Surface, options: list, selection: int, font: pygame.font.Font):
+    """Draw the exit portal choice menu."""
+    # Semi-transparent overlay
+    overlay_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    overlay_surf.fill((0, 0, 0, 160))
+    screen.blit(overlay_surf, (0, 0))
+
+    # Menu box - wider for horizontal options
+    menu_width = 500
+    menu_height = 200
+    menu_x = (screen.get_width() - menu_width) // 2
+    menu_y = (screen.get_height() - menu_height) // 2
+
+    # Horror-themed background with cyan glow (portal color)
+    menu_bg = pygame.Surface((menu_width, menu_height))
+    menu_bg.fill((15, 20, 30))
+    pygame.draw.rect(menu_bg, (60, 120, 140), (0, 0, menu_width, menu_height), 3)
+    pygame.draw.rect(menu_bg, (80, 160, 180), (2, 2, menu_width - 4, menu_height - 4), 1)
+    screen.blit(menu_bg, (menu_x, menu_y))
+
+    # Title
+    title_font = pygame.font.Font(None, 36)
+    title_text = title_font.render("The Exit Awaits", True, (150, 220, 255))
+    title_rect = title_text.get_rect(centerx=screen.get_width() // 2, y=menu_y + 25)
+    screen.blit(title_text, title_rect)
+
+    # Subtitle
+    sub_font = pygame.font.Font(None, 22)
+    sub_text = sub_font.render("What will you do?", True, (120, 140, 160))
+    sub_rect = sub_text.get_rect(centerx=screen.get_width() // 2, y=menu_y + 55)
+    screen.blit(sub_text, sub_rect)
+
+    # Options - horizontal layout
+    option_y = menu_y + 100
+    option_spacing = menu_width // (len(options) + 1)
+
+    for i, option in enumerate(options):
+        is_selected = (i == selection)
+        option_x = menu_x + option_spacing * (i + 1)
+
+        if is_selected:
+            # Selected option - bright with border
+            color = (200, 255, 255)
+            pygame.draw.rect(screen, (80, 160, 180),
+                           (option_x - 80, option_y - 5, 160, 40), 2, border_radius=5)
+        else:
+            color = (100, 120, 140)
+
+        option_text = font.render(option, True, color)
+        option_rect = option_text.get_rect(centerx=option_x, centery=option_y + 15)
+        screen.blit(option_text, option_rect)
+
+    # Instructions
+    inst_font = pygame.font.Font(None, 18)
+    inst_text = inst_font.render("← → to choose, Enter to confirm, ESC to cancel", True, (80, 100, 120))
+    inst_rect = inst_text.get_rect(centerx=screen.get_width() // 2, y=menu_y + menu_height - 25)
+    screen.blit(inst_text, inst_rect)
+
+
+def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.font.Font):
+    """Draw the status/inventory panel (Tab menu)."""
+    # Semi-transparent overlay
+    overlay_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    overlay_surf.fill((0, 0, 0, 200))
+    screen.blit(overlay_surf, (0, 0))
+
+    # Panel dimensions
+    panel_width = 600
+    panel_height = 450
+    panel_x = (screen.get_width() - panel_width) // 2
+    panel_y = (screen.get_height() - panel_height) // 2
+
+    # Panel background
+    panel_bg = pygame.Surface((panel_width, panel_height))
+    panel_bg.fill((20, 22, 28))
+    pygame.draw.rect(panel_bg, (80, 80, 100), (0, 0, panel_width, panel_height), 2)
+    screen.blit(panel_bg, (panel_x, panel_y))
+
+    # Title
+    title_font = pygame.font.Font(None, 36)
+    title_text = title_font.render("STATUS", True, (200, 200, 220))
+    screen.blit(title_text, (panel_x + 20, panel_y + 15))
+
+    # Sections
+    section_font = pygame.font.Font(None, 24)
+    info_font = pygame.font.Font(None, 20)
+    y_offset = panel_y + 60
+
+    # Player Stats
+    screen.blit(section_font.render("PLAYER", True, (150, 180, 200)), (panel_x + 20, y_offset))
+    y_offset += 30
+    stats = [
+        f"Alignment: {player.alignment.upper()}",
+        f"Karma: {player.karma}",
+        f"Health: {player.health}%",
+    ]
+    for stat in stats:
+        screen.blit(info_font.render(stat, True, (140, 140, 150)), (panel_x + 40, y_offset))
+        y_offset += 22
+
+    y_offset += 15
+
+    # Faction Status
+    screen.blit(section_font.render("FACTION STATUS", True, (150, 180, 200)), (panel_x + 20, y_offset))
+    y_offset += 30
+    faction_info = [
+        f"Civilians: {'Friendly' if player.karma >= 0 else 'Wary'}",
+        f"Police: {'Allied' if player.karma > 5 else 'Neutral' if player.karma >= -5 else 'Hostile'}",
+        f"Criminals: {'Respected' if player.karma < -5 else 'Distrusted'}",
+    ]
+    for info in faction_info:
+        screen.blit(info_font.render(info, True, (140, 140, 150)), (panel_x + 40, y_offset))
+        y_offset += 22
+
+    y_offset += 15
+
+    # Quest/Progress
+    screen.blit(section_font.render("CURRENT OBJECTIVE", True, (150, 180, 200)), (panel_x + 20, y_offset))
+    y_offset += 30
+
+    phase = game_loop.state.phase
+    if phase == GamePhase.TUTORIAL:
+        quest = "Learn the controls. Explore the city."
+        hint = "Move around, talk to NPCs, choose your path."
+    elif phase == GamePhase.LIVING_CITY:
+        quest = "Observe the city. Something feels... off."
+        hint = "Watch the NPCs. Look for things that don't belong."
+    elif phase == GamePhase.SOMETHING_WRONG:
+        quest = f"Find anomalies ({game_loop.state.anomalies_discovered}/{game_loop.state.anomalies_required})"
+        hint = "Look for pulsing markers. Investigate the strange."
+    elif phase == GamePhase.EXIT_SEARCH:
+        quest = "Find the exit portal."
+        hint = "The exit has appeared. Look for the cyan glow."
+    else:
+        quest = "The exit awaits your decision."
+        hint = "Stay or go. The choice is yours."
+
+    screen.blit(info_font.render(quest, True, (180, 180, 200)), (panel_x + 40, y_offset))
+    y_offset += 25
+    screen.blit(info_font.render(f"Hint: {hint}", True, (120, 140, 120)), (panel_x + 40, y_offset))
+
+    y_offset += 40
+
+    # Controls reminder
+    screen.blit(section_font.render("CONTROLS", True, (150, 180, 200)), (panel_x + 20, y_offset))
+    y_offset += 30
+    controls = [
+        "Arrow Keys / Right-Click: Move",
+        "E: Interact with NPC",
+        "Space / Left-Click: Attack",
+        "G/N: Change Alignment",
+        "H: Help Police  |  J: Join Crime",
+        "M: Mute Narrator  |  I: Instructions",
+        "TAB: This menu  |  ESC: Pause/Close",
+    ]
+    for ctrl in controls:
+        screen.blit(info_font.render(ctrl, True, (100, 110, 120)), (panel_x + 40, y_offset))
+        y_offset += 20
+
+    # Close hint
+    close_text = info_font.render("Press TAB or ESC to close", True, (80, 90, 100))
+    screen.blit(close_text, (panel_x + panel_width // 2 - 80, panel_y + panel_height - 25))
+
+
 def _register_npcs_with_overlay(overlay, npcs, plot_state):
     """Register all NPCs with the overlay's NPC dialogue system."""
     from game.plot_state import HorrorStage
@@ -1154,6 +1416,46 @@ def _generate_name(npc_type):
     fallback = f"Unknown #{len(_USED_NAMES) + 1}"
     _USED_NAMES.add(fallback)
     return fallback
+
+
+def _do_attack(player, all_npcs, overlay, game_loop, narrator_queue):
+    """Handle attack action - damages nearby NPCs."""
+    attack_range = 60
+    attacked = False
+
+    for npc in all_npcs:
+        if npc.in_jail:
+            continue
+        dx = npc.x - player.x
+        dy = npc.y - player.y
+        dist = math.sqrt(dx * dx + dy * dy)
+
+        if dist < attack_range:
+            npc.health -= 25
+            attacked = True
+            # Attacking reduces karma
+            player.karma -= 3
+            # Witnesses lose trust
+            npc.trust = max(-100, npc.trust - 30)
+
+            if npc.health <= 0:
+                npc.in_jail = True  # "Knocked out" - removed from play
+                overlay.notifications.show_glitch("They fall.", 1.5, "top_right")
+                game_loop.on_player_attacked(npc.type, fatal=True)
+            else:
+                game_loop.on_player_attacked(npc.type, fatal=False)
+
+    if attacked:
+        # Narrator comments on violence
+        comments = [
+            "Violence. How predictable.",
+            "The city sees everything you do.",
+            "Is this the path you choose?",
+            "They won't forget this."
+        ]
+        narrator_queue.queue_line(random.choice(comments))
+    else:
+        overlay.notifications.show_glitch("Nothing to hit.", 1.0, "top_right")
 
 
 def _generate_backstory(npc_type):
