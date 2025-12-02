@@ -228,13 +228,9 @@ class Camera:
         return (int(screen_x), int(screen_y))
 
     def apply_rect(self, rect: pygame.Rect) -> pygame.Rect:
-        """Convert a world rect to screen rect."""
-        return pygame.Rect(
-            rect.x - int(self.x),
-            rect.y - int(self.y),
-            rect.width,
-            rect.height
-        )
+        """Convert a world rect to screen rect with wraparound support."""
+        screen_x, screen_y = self.apply(rect.x, rect.y)
+        return pygame.Rect(screen_x, screen_y, rect.width, rect.height)
 
     def is_visible(self, rect: pygame.Rect, margin: int = 50) -> bool:
         """Check if a rect is visible on screen (with margin for smooth transitions and wraparound)."""
@@ -574,10 +570,37 @@ class CityBlock:
         if not camera.is_visible(self.rect):
             return
 
+        self._draw_buildings(screen, camera, darkness_alpha, 0, 0)
+
+    def draw_at_offset(self, screen: pygame.Surface, camera: Camera,
+                       offset_x: int, offset_y: int, darkness_alpha: int = 0):
+        """Draw the block at a world offset position (for wraparound)."""
+        self._draw_buildings(screen, camera, darkness_alpha, offset_x, offset_y)
+
+    def _draw_buildings(self, screen: pygame.Surface, camera: Camera,
+                        darkness_alpha: int, offset_x: int, offset_y: int):
+        """Internal method to draw buildings with optional world offset."""
         for idx, (building, color, style) in enumerate(zip(
             self.buildings, self.building_colors, self.building_styles
         )):
-            screen_rect = camera.apply_rect(building)
+            # Create offset building rect for wraparound
+            offset_building = pygame.Rect(
+                building.x + offset_x,
+                building.y + offset_y,
+                building.width,
+                building.height
+            )
+            screen_rect = pygame.Rect(
+                offset_building.x - int(camera.x),
+                offset_building.y - int(camera.y),
+                building.width,
+                building.height
+            )
+
+            # Skip if off screen
+            if (screen_rect.right < 0 or screen_rect.left > camera.screen_width or
+                screen_rect.bottom < 0 or screen_rect.top > camera.screen_height):
+                continue
 
             # Apply darkness tint
             if darkness_alpha > 0:
@@ -937,9 +960,38 @@ class CityMap:
                 wrap_rect = pygame.Rect(0, 0, right_overflow, bottom_overflow)
                 screen.blit(self._road_surface, (main_width, main_height), wrap_rect)
 
-        # Draw buildings with darkness
+        # Draw buildings with darkness (handle wraparound by drawing at multiple positions)
         for block in self.blocks:
+            # Draw at normal position
             block.draw(screen, camera, darkness_alpha)
+
+            # For wraparound: check if block should also appear at wrapped positions
+            # This handles blocks near world edges that need to appear on opposite side
+            block_right = block.rect.x + block.rect.width
+            block_bottom = block.rect.y + block.rect.height
+
+            cam_x = camera.x % self.config.world_width
+            cam_y = camera.y % self.config.world_height
+            cam_right = cam_x + camera.screen_width
+            cam_bottom = cam_y + camera.screen_height
+
+            # If camera view wraps horizontally
+            if cam_right > self.config.world_width:
+                # Blocks on left side of world might need to appear on right of screen
+                if block.rect.x < cam_right - self.config.world_width:
+                    block.draw_at_offset(screen, camera, self.config.world_width, 0, darkness_alpha)
+
+            # If camera view wraps vertically
+            if cam_bottom > self.config.world_height:
+                # Blocks on top of world might need to appear on bottom of screen
+                if block.rect.y < cam_bottom - self.config.world_height:
+                    block.draw_at_offset(screen, camera, 0, self.config.world_height, darkness_alpha)
+
+            # Corner case: both horizontal and vertical wrap
+            if cam_right > self.config.world_width and cam_bottom > self.config.world_height:
+                if (block.rect.x < cam_right - self.config.world_width and
+                    block.rect.y < cam_bottom - self.config.world_height):
+                    block.draw_at_offset(screen, camera, self.config.world_width, self.config.world_height, darkness_alpha)
 
         # Apply overall darkness overlay for night
         if darkness_alpha > 20:
