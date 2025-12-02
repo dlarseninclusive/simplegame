@@ -237,14 +237,18 @@ class Camera:
         )
 
     def is_visible(self, rect: pygame.Rect, margin: int = 50) -> bool:
-        """Check if a rect is visible on screen (with margin for smooth transitions)."""
-        screen_rect = pygame.Rect(
-            int(self.x) - margin,
-            int(self.y) - margin,
-            self.screen_width + margin * 2,
-            self.screen_height + margin * 2
-        )
-        return screen_rect.colliderect(rect)
+        """Check if a rect is visible on screen (with margin for smooth transitions and wraparound)."""
+        # Get screen-space position of the rect
+        screen_x, screen_y = self.apply(rect.x, rect.y)
+
+        # Check if rect is on screen (with margin)
+        if (screen_x + rect.width >= -margin and
+            screen_x < self.screen_width + margin and
+            screen_y + rect.height >= -margin and
+            screen_y < self.screen_height + margin):
+            return True
+
+        return False
 
 
 class WeatherSystem:
@@ -901,18 +905,37 @@ class CityMap:
 
     def draw(self, screen: pygame.Surface, camera: Camera, darkness_alpha: int = 0):
         """Draw the city with optional darkness overlay."""
-        # Draw pre-rendered roads/sidewalks
+        # Draw pre-rendered roads/sidewalks with wraparound support
         if self._road_surface:
-            # Only draw visible portion
-            visible_rect = pygame.Rect(
-                int(camera.x), int(camera.y),
-                camera.screen_width, camera.screen_height
-            )
-            screen.blit(
-                self._road_surface,
-                (0, 0),
-                visible_rect
-            )
+            cam_x = int(camera.x) % self.config.world_width
+            cam_y = int(camera.y) % self.config.world_height
+
+            # Calculate how much of the view extends beyond world edges
+            right_overflow = max(0, (cam_x + camera.screen_width) - self.config.world_width)
+            bottom_overflow = max(0, (cam_y + camera.screen_height) - self.config.world_height)
+
+            # Main visible area (top-left quadrant)
+            main_width = camera.screen_width - right_overflow
+            main_height = camera.screen_height - bottom_overflow
+
+            if main_width > 0 and main_height > 0:
+                visible_rect = pygame.Rect(cam_x, cam_y, main_width, main_height)
+                screen.blit(self._road_surface, (0, 0), visible_rect)
+
+            # Right edge wraparound (draw left side of world on right of screen)
+            if right_overflow > 0 and main_height > 0:
+                wrap_rect = pygame.Rect(0, cam_y, right_overflow, main_height)
+                screen.blit(self._road_surface, (main_width, 0), wrap_rect)
+
+            # Bottom edge wraparound (draw top of world on bottom of screen)
+            if bottom_overflow > 0 and main_width > 0:
+                wrap_rect = pygame.Rect(cam_x, 0, main_width, bottom_overflow)
+                screen.blit(self._road_surface, (0, main_height), wrap_rect)
+
+            # Corner wraparound (top-left of world in bottom-right of screen)
+            if right_overflow > 0 and bottom_overflow > 0:
+                wrap_rect = pygame.Rect(0, 0, right_overflow, bottom_overflow)
+                screen.blit(self._road_surface, (main_width, main_height), wrap_rect)
 
         # Draw buildings with darkness
         for block in self.blocks:
