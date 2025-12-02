@@ -200,6 +200,8 @@ class Anomaly:
     discovered: bool = False
     discovery_text: str = ""
     narrator_reaction: str = ""
+    hidden: bool = False  # Hidden until previous anomaly discovered
+    visual_type: str = "pulse"  # Visual effect type for distinctiveness
 
 
 @dataclass
@@ -512,7 +514,8 @@ class GameLoopManager:
                 description="An NPC that stands perfectly still, staring at nothing.",
                 x=0, y=0,
                 discovery_text="They haven't moved. Not once. Their eyes follow you.",
-                narrator_reaction="They're just resting. Move along."
+                narrator_reaction="They're just resting. Move along.",
+                visual_type="pulse_purple"
             ),
             Anomaly(
                 id="no_door_building",
@@ -520,7 +523,8 @@ class GameLoopManager:
                 description="A building with no entrance. How do people get in?",
                 x=0, y=0,
                 discovery_text="There's no door. There was never a door.",
-                narrator_reaction="Not all buildings need doors. Don't ask why."
+                narrator_reaction="Not all buildings need doors. Don't ask why.",
+                visual_type="pulse_red"
             ),
             Anomaly(
                 id="repeating_npc",
@@ -528,7 +532,8 @@ class GameLoopManager:
                 description="An NPC repeating the same phrase over and over.",
                 x=0, y=0,
                 discovery_text="'Nice weather.' 'Nice weather.' 'Nice weather.'",
-                narrator_reaction="They like talking about weather. It's... normal."
+                narrator_reaction="They like talking about weather. It's... normal.",
+                visual_type="pulse_green"
             ),
             Anomaly(
                 id="dead_end_road",
@@ -536,7 +541,8 @@ class GameLoopManager:
                 description="A road that leads to nothing. Just... stops.",
                 x=0, y=0,
                 discovery_text="The road ends. Beyond it, there's nothing to render.",
-                narrator_reaction="Construction zone. Don't look too closely."
+                narrator_reaction="Construction zone. Don't look too closely.",
+                visual_type="pulse_cyan"
             ),
             Anomaly(
                 id="knowing_npc",
@@ -544,7 +550,8 @@ class GameLoopManager:
                 description="An NPC who knows your name. You never told them.",
                 x=0, y=0,
                 discovery_text="'I've been waiting for you, player.'",
-                narrator_reaction="Lucky guess. Names are... guessable."
+                narrator_reaction="Lucky guess. Names are... guessable.",
+                visual_type="pulse_yellow"
             ),
             Anomaly(
                 id="flickering_lamp",
@@ -552,7 +559,8 @@ class GameLoopManager:
                 description="A streetlamp that flickers in a pattern. SOS?",
                 x=0, y=0,
                 discovery_text="The light blinks: ... --- ... Help?",
-                narrator_reaction="Electrical fault. Ignore it."
+                narrator_reaction="Electrical fault. Ignore it.",
+                visual_type="flicker_white"
             ),
             Anomaly(
                 id="shadow_figure",
@@ -560,15 +568,45 @@ class GameLoopManager:
                 description="Something in the corner of your vision. Gone when you look.",
                 x=0, y=0,
                 discovery_text="You saw it. It saw you. Now it's gone.",
-                narrator_reaction="Your eyes are tired. Rest them. Close them."
+                narrator_reaction="Your eyes are tired. Rest them. Close them.",
+                visual_type="fade_black"
             ),
         ]
 
-        # Place anomalies randomly in the world
+        # Place anomalies on sidewalks (not in buildings)
+        # Use 6 anomalies, need 5 to progress
+        # Only spawn first anomaly initially, rest spawn on discovery
         margin = 200
-        for anomaly in anomaly_templates[:6]:  # Use 6 anomalies, need 5 to progress
-            anomaly.x = random.randint(margin, self.world_width - margin)
-            anomaly.y = random.randint(margin, self.world_height - margin)
+        for i, anomaly in enumerate(anomaly_templates[:6]):
+            # Find valid sidewalk position (not in building)
+            max_attempts = 50
+            for _ in range(max_attempts):
+                x = random.randint(margin, self.world_width - margin)
+                y = random.randint(margin, self.world_height - margin)
+
+                # Check if position is on a road/sidewalk (not in a building block)
+                # Buildings are on a grid - roads are the gaps
+                block_size = 200  # Approximate block + road size
+                road_width = 40
+                x_in_grid = x % block_size
+                y_in_grid = y % block_size
+
+                # If x or y coordinate is in the road area (first 40px of each grid cell)
+                if x_in_grid < road_width or y_in_grid < road_width:
+                    anomaly.x = x
+                    anomaly.y = y
+                    break
+            else:
+                # Fallback if no valid position found
+                anomaly.x = random.randint(margin, self.world_width - margin)
+                anomaly.y = random.randint(margin, self.world_height - margin)
+
+            # Only first anomaly is initially active, rest hidden until previous discovered
+            if i > 0:
+                anomaly.hidden = True
+            else:
+                anomaly.hidden = False
+
             self.state.anomalies.append(anomaly)
 
     def start(self):

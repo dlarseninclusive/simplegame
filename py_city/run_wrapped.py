@@ -452,6 +452,14 @@ def run(screen, clock, guide, scene_slug, tone):
 
     def on_anomaly_discovered(anomaly):
         discovered_anomalies.append(anomaly)
+
+        # Reveal next hidden anomaly (sequential spawning)
+        for next_anomaly in game_loop.state.anomalies:
+            if hasattr(next_anomaly, 'hidden') and next_anomaly.hidden:
+                next_anomaly.hidden = False
+                overlay.notifications.show_glitch("Something else appears...", duration=2.0, position="top_right")
+                break
+
         # Show notification via the notifications subsystem
         try:
             # Show anomaly name and description
@@ -720,6 +728,10 @@ def run(screen, clock, guide, scene_slug, tone):
 
         # Draw anomaly markers (before NPCs so they appear under)
         for anomaly in game_loop.state.anomalies:
+            # Skip hidden anomalies (not yet revealed)
+            if hasattr(anomaly, 'hidden') and anomaly.hidden:
+                continue
+
             if not anomaly.discovered:
                 # Undiscovered anomalies have pulsing effect
                 ax, ay = camera.apply(anomaly.x, anomaly.y)
@@ -728,20 +740,56 @@ def run(screen, clock, guide, scene_slug, tone):
                     pulse = abs(math.sin(game_loop.state.phase_timer * 1.5))
                     radius = int(10 + pulse * 8)  # Pulse between 10-18 pixels
 
+                    # Color based on visual_type for distinctiveness
+                    visual_type = getattr(anomaly, 'visual_type', 'pulse_purple')
+                    if visual_type == "pulse_purple":
+                        base_color = (100, 80, 150)
+                    elif visual_type == "pulse_red":
+                        base_color = (150, 50, 50)
+                    elif visual_type == "pulse_green":
+                        base_color = (50, 150, 80)
+                    elif visual_type == "pulse_cyan":
+                        base_color = (50, 150, 180)
+                    elif visual_type == "pulse_yellow":
+                        base_color = (180, 150, 50)
+                    elif visual_type == "flicker_white":
+                        # Flicker effect instead of pulse
+                        flicker = int(random.random() * 3) == 0
+                        base_color = (200, 200, 200) if flicker else (120, 120, 120)
+                    elif visual_type == "fade_black":
+                        # Fade in/out effect
+                        fade = abs(math.sin(game_loop.state.phase_timer * 0.5))
+                        base_color = (int(80 * fade), int(80 * fade), int(120 * fade))
+                    else:
+                        base_color = (100, 80, 150)
+
                     # Outer glow rings
                     for i in range(3):
                         ring_alpha = int((1 - i/3) * 60 * pulse)
                         ring_radius = radius + i * 8
-                        ring_color = (100 + int(pulse * 50), 80 + int(pulse * 70), 150 + int(pulse * 50))
+                        ring_color = (
+                            base_color[0] + int(pulse * 50),
+                            base_color[1] + int(pulse * 70),
+                            base_color[2] + int(pulse * 50)
+                        )
                         glow_surf = pygame.Surface((ring_radius * 4, ring_radius * 4), pygame.SRCALPHA)
                         pygame.draw.circle(glow_surf, (*ring_color, ring_alpha),
                                           (ring_radius * 2, ring_radius * 2), ring_radius, 3)
                         screen.blit(glow_surf, (int(ax) - ring_radius * 2, int(ay) - ring_radius * 2))
 
                     # Inner pulsing core
-                    core_color = (120 + int(pulse * 60), 100 + int(pulse * 80), 170 + int(pulse * 60))
+                    core_color = (
+                        base_color[0] + int(pulse * 60),
+                        base_color[1] + int(pulse * 80),
+                        base_color[2] + int(pulse * 60)
+                    )
                     pygame.draw.circle(screen, core_color, (int(ax), int(ay)), radius, 2)
-                    pygame.draw.circle(screen, (150, 130, 200), (int(ax), int(ay)), max(2, radius - 4))
+                    fill_color = (
+                        min(255, base_color[0] + 50),
+                        min(255, base_color[1] + 50),
+                        min(255, base_color[2] + 50)
+                    )
+                    pygame.draw.circle(screen, fill_color, (int(ax), int(ay)), max(2, radius - 4))
 
         # Draw exit portal
         if exit_portal["active"]:
