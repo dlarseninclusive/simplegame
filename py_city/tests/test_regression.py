@@ -78,6 +78,13 @@ from city_map import (
     CityBlock, BuildingStyle, CityConfig, CityMap, Camera
 )
 from game_loop import CrimeSimulation, GamePhase, GameLoopManager, NarratorQueue
+from corruption import CorruptionManager, CORRUPTION_NARRATOR_LINES
+from city_entities import (
+    Vehicle, VehicleType, VehicleManager,
+    Animal, AnimalType, AnimalManager,
+    SpecialBuilding, SpecialBuildingType, SpecialBuildingManager,
+    RoadNetwork, Clue, ClueType, CrimeCase, InvestigationManager
+)
 
 
 class TestDayNightCycle(unittest.TestCase):
@@ -372,6 +379,228 @@ class TestNarratorQueue(unittest.TestCase):
         queue.queue_line("Line 2")
         queue.queue_line("Line 3")  # Should drop oldest
         self.assertLessEqual(len(queue.queue), 2)
+
+
+class TestCorruptionManager(unittest.TestCase):
+    """Tests for corruption/entropy system."""
+
+    def test_init(self):
+        """Test corruption manager initialization."""
+        corruption = CorruptionManager()
+        self.assertEqual(corruption.entropy, 0.0)
+        self.assertEqual(corruption.target_entropy, 0.0)
+
+    def test_entropy_by_phase(self):
+        """Test entropy levels for different phases."""
+        corruption = CorruptionManager()
+
+        corruption.update_entropy("TUTORIAL")
+        self.assertEqual(corruption.target_entropy, 0.0)
+
+        corruption.update_entropy("LIVING_CITY")
+        self.assertEqual(corruption.target_entropy, 0.05)
+
+        corruption.update_entropy("SOMETHING_WRONG")
+        self.assertEqual(corruption.target_entropy, 0.3)
+
+        corruption.update_entropy("EXIT_SEARCH")
+        self.assertEqual(corruption.target_entropy, 0.6)
+
+    def test_time_warp_default(self):
+        """Test time warp returns 1.0 by default."""
+        corruption = CorruptionManager()
+        dt = corruption.warp_time(0.016)
+        self.assertEqual(dt, 0.016)
+
+    def test_escape_blocking_low_entropy(self):
+        """Test escape not blocked at low entropy."""
+        corruption = CorruptionManager()
+        corruption.entropy = 0.1
+        # At low entropy, should never block
+        blocked = corruption.should_block_escape()
+        self.assertFalse(blocked)
+
+    def test_narrator_lines_exist(self):
+        """Test corruption narrator lines are defined."""
+        self.assertIn("TIME_GLITCH", CORRUPTION_NARRATOR_LINES)
+        self.assertIn("ESCAPE_BLOCKED", CORRUPTION_NARRATOR_LINES)
+        self.assertGreater(len(CORRUPTION_NARRATOR_LINES["ESCAPE_BLOCKED"]), 0)
+
+
+class TestVehicles(unittest.TestCase):
+    """Tests for vehicle system."""
+
+    def test_vehicle_types_exist(self):
+        """Test all vehicle types are defined."""
+        types = list(VehicleType)
+        self.assertIn(VehicleType.CAR, types)
+        self.assertIn(VehicleType.TRUCK, types)
+        self.assertIn(VehicleType.BUS, types)
+        self.assertIn(VehicleType.POLICE_CAR, types)
+        self.assertIn(VehicleType.TAXI, types)
+
+    def test_vehicle_creation(self):
+        """Test vehicle can be created."""
+        vehicle = Vehicle(x=100, y=100, vehicle_type=VehicleType.CAR, direction=(1, 0))
+        self.assertEqual(vehicle.x, 100)
+        self.assertEqual(vehicle.vehicle_type, VehicleType.CAR)
+        self.assertFalse(vehicle.waiting)
+
+    def test_vehicle_speed_varies_by_type(self):
+        """Test different vehicle types have different speeds."""
+        car = Vehicle(x=0, y=0, vehicle_type=VehicleType.CAR, direction=(1, 0))
+        bus = Vehicle(x=0, y=0, vehicle_type=VehicleType.BUS, direction=(1, 0))
+        police = Vehicle(x=0, y=0, vehicle_type=VehicleType.POLICE_CAR, direction=(1, 0))
+
+        self.assertGreater(police.speed, car.speed)
+        self.assertGreater(car.speed, bus.speed)
+
+    def test_vehicle_manager_init(self):
+        """Test vehicle manager initialization."""
+        manager = VehicleManager(1000, 1000)
+        self.assertEqual(len(manager.vehicles), 0)
+        self.assertEqual(manager.max_vehicles, 15)
+
+
+class TestAnimals(unittest.TestCase):
+    """Tests for animal system."""
+
+    def test_animal_types_exist(self):
+        """Test all animal types are defined."""
+        types = list(AnimalType)
+        self.assertIn(AnimalType.DOG, types)
+        self.assertIn(AnimalType.CAT, types)
+        self.assertIn(AnimalType.PIGEON, types)
+        self.assertIn(AnimalType.RAT, types)
+
+    def test_animal_creation(self):
+        """Test animal can be created."""
+        animal = Animal(x=100, y=100, animal_type=AnimalType.DOG)
+        self.assertEqual(animal.x, 100)
+        self.assertEqual(animal.animal_type, AnimalType.DOG)
+        self.assertEqual(animal.state, "idle")
+
+    def test_animal_size_varies_by_type(self):
+        """Test different animal types have different sizes."""
+        dog = Animal(x=0, y=0, animal_type=AnimalType.DOG)
+        cat = Animal(x=0, y=0, animal_type=AnimalType.CAT)
+        rat = Animal(x=0, y=0, animal_type=AnimalType.RAT)
+
+        self.assertGreater(dog.size, cat.size)
+        self.assertGreater(cat.size, rat.size)
+
+    def test_animal_manager_building_collision(self):
+        """Test animal manager tracks building rects."""
+        manager = AnimalManager(1000, 1000)
+        rect = MockPygame.Rect(100, 100, 50, 50)
+        manager.set_building_rects([rect])
+
+        self.assertTrue(manager._is_in_building(125, 125))
+        self.assertFalse(manager._is_in_building(0, 0))
+
+
+class TestSpecialBuildings(unittest.TestCase):
+    """Tests for special building system."""
+
+    def test_building_types_exist(self):
+        """Test all special building types are defined."""
+        types = list(SpecialBuildingType)
+        self.assertIn(SpecialBuildingType.JAIL, types)
+        self.assertIn(SpecialBuildingType.COURTHOUSE, types)
+        self.assertIn(SpecialBuildingType.HOSPITAL, types)
+        self.assertIn(SpecialBuildingType.POLICE_STATION, types)
+        self.assertIn(SpecialBuildingType.BANK, types)
+        self.assertIn(SpecialBuildingType.BAR, types)
+
+    def test_building_creation(self):
+        """Test special building can be created."""
+        building = SpecialBuilding(
+            x=100, y=100, width=80, height=60,
+            building_type=SpecialBuildingType.JAIL
+        )
+        self.assertEqual(building.building_type, SpecialBuildingType.JAIL)
+        self.assertEqual(building.name, "City Jail")
+        self.assertTrue(building.enterable)
+
+    def test_building_door_position(self):
+        """Test door is at bottom center."""
+        building = SpecialBuilding(
+            x=100, y=100, width=80, height=60,
+            building_type=SpecialBuildingType.BANK
+        )
+        self.assertEqual(building.door_x, 140)  # 100 + 80/2
+        self.assertEqual(building.door_y, 160)  # 100 + 60
+
+    def test_is_near_door(self):
+        """Test door proximity detection."""
+        building = SpecialBuilding(
+            x=100, y=100, width=80, height=60,
+            building_type=SpecialBuildingType.BAR
+        )
+        self.assertTrue(building.is_near_door(140, 160, radius=30))
+        self.assertFalse(building.is_near_door(0, 0, radius=30))
+
+
+class TestRoadNetwork(unittest.TestCase):
+    """Tests for road network pathfinding."""
+
+    def test_road_network_init(self):
+        """Test road network initialization."""
+        network = RoadNetwork()
+        self.assertEqual(len(network.nodes), 0)
+        self.assertEqual(len(network.segments), 0)
+
+    def test_build_from_grid(self):
+        """Test road network generation from grid."""
+        network = RoadNetwork()
+        network.build_from_grid(
+            world_width=800, world_height=600,
+            block_width=150, block_height=120,
+            road_width=50
+        )
+        self.assertGreater(len(network.nodes), 0)
+        self.assertGreater(len(network.segments), 0)
+
+    def test_get_nearest_node(self):
+        """Test finding nearest node."""
+        network = RoadNetwork()
+        network.build_from_grid(800, 600, 150, 120, 50)
+        node = network.get_nearest_node(400, 300)
+        self.assertIsNotNone(node)
+
+    def test_get_random_path(self):
+        """Test path generation."""
+        network = RoadNetwork()
+        network.build_from_grid(800, 600, 150, 120, 50)
+        path = network.get_random_path(400, 300, length=3)
+        self.assertGreater(len(path), 0)
+
+
+class TestInvestigationSystem(unittest.TestCase):
+    """Tests for crime investigation system."""
+
+    def test_clue_types_exist(self):
+        """Test all clue types are defined."""
+        types = list(ClueType)
+        self.assertIn(ClueType.WITNESS, types)
+        self.assertIn(ClueType.FOOTPRINT, types)
+        self.assertIn(ClueType.WEAPON, types)
+
+    def test_investigation_manager_init(self):
+        """Test investigation manager initialization."""
+        manager = InvestigationManager()
+        self.assertEqual(len(manager.active_cases), 0)
+        self.assertEqual(len(manager.solved_cases), 0)
+
+    def test_create_case(self):
+        """Test case creation generates clues."""
+        manager = InvestigationManager()
+        case = manager.create_case("robbery", 1000, 1000)
+
+        self.assertEqual(case.crime_type, "robbery")
+        self.assertEqual(len(case.clues), 3)
+        self.assertFalse(case.solved)
+        self.assertEqual(len(manager.active_cases), 1)
 
 
 if __name__ == '__main__':

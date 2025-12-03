@@ -1020,12 +1020,22 @@ class InvestigationManager:
 # ROAD NETWORK (for vehicle pathfinding)
 # =============================================================================
 
-@dataclass
+@dataclass(eq=False)
 class RoadNode:
     """A node in the road network."""
     x: float
     y: float
     connections: List['RoadNode'] = field(default_factory=list)
+
+    def __hash__(self):
+        """Hash by position (unique identifier)."""
+        return hash((self.x, self.y))
+
+    def __eq__(self, other):
+        """Equality by position."""
+        if not isinstance(other, RoadNode):
+            return False
+        return self.x == other.x and self.y == other.y
 
 
 class RoadNetwork:
