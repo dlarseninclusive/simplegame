@@ -79,7 +79,7 @@ class Vehicle:
             self.speed = 3.0  # Faster
 
     def update(self, dt: float, road_network: 'RoadNetwork' = None):
-        """Update vehicle position."""
+        """Update vehicle position with lane-based movement."""
         if self.waiting:
             self.wait_timer -= dt
             if self.wait_timer <= 0:
@@ -89,22 +89,54 @@ class Vehicle:
         # Move along path
         if self.path and self.path_index < len(self.path):
             target_x, target_y = self.path[self.path_index]
+
+            # Calculate direction to target
             dx = target_x - self.x
             dy = target_y - self.y
             dist = math.sqrt(dx * dx + dy * dy)
 
-            if dist < 5:  # Reached waypoint
+            if dist < 20:  # Reached waypoint (increased threshold for smooth turning)
                 self.path_index += 1
                 if self.path_index >= len(self.path):
                     # Generate new path
                     if road_network:
-                        self.path = road_network.get_random_path(self.x, self.y)
+                        self.path = road_network.get_random_path(self.x, self.y, length=8)
                         self.path_index = 0
             else:
-                # Move toward waypoint
-                self.direction = (dx / dist, dy / dist)
-                self.x += self.direction[0] * self.speed * dt * 60
-                self.y += self.direction[1] * self.speed * dt * 60
+                # Update direction (smooth turning)
+                new_dir = (dx / dist, dy / dist)
+                # Blend old and new direction for smooth turns
+                blend = 0.1  # Turn speed
+                self.direction = (
+                    self.direction[0] * (1 - blend) + new_dir[0] * blend,
+                    self.direction[1] * (1 - blend) + new_dir[1] * blend
+                )
+                # Renormalize
+                dir_len = math.sqrt(self.direction[0]**2 + self.direction[1]**2)
+                if dir_len > 0:
+                    self.direction = (self.direction[0] / dir_len, self.direction[1] / dir_len)
+
+                # Apply lane offset - stay on right side of road
+                lane_offset = 12
+                perp_x = -self.direction[1]
+                perp_y = self.direction[0]
+
+                # Calculate target position with lane offset
+                lane_target_x = target_x + perp_x * lane_offset
+                lane_target_y = target_y + perp_y * lane_offset
+
+                # Move toward lane-adjusted target
+                adj_dx = lane_target_x - self.x
+                adj_dy = lane_target_y - self.y
+                adj_dist = math.sqrt(adj_dx * adj_dx + adj_dy * adj_dy)
+                if adj_dist > 0:
+                    move_dir = (adj_dx / adj_dist, adj_dy / adj_dist)
+                    self.x += move_dir[0] * self.speed * dt * 60
+                    self.y += move_dir[1] * self.speed * dt * 60
+        elif road_network:
+            # No path - get one
+            self.path = road_network.get_random_path(self.x, self.y, length=8)
+            self.path_index = 0
 
     def draw(self, screen: pygame.Surface, camera: 'Camera'):
         """Draw the vehicle with improved top-down graphics."""
@@ -256,7 +288,7 @@ class VehicleManager:
     def spawn_vehicles(self, road_segments: List[Tuple[int, int, int, int]]):
         """Spawn initial vehicles on road segments."""
         for _ in range(self.max_vehicles):
-            if road_segments:
+            if road_segments and self.road_network:
                 # Pick random road segment
                 x1, y1, x2, y2 = random.choice(road_segments)
                 t = random.random()
@@ -271,6 +303,13 @@ class VehicleManager:
                 else:
                     direction = (1, 0)
 
+                # Offset to right side of road for lane separation
+                lane_offset = 12  # Half road width to stay in lane
+                perp_x = -direction[1]  # Perpendicular vector
+                perp_y = direction[0]
+                x += perp_x * lane_offset
+                y += perp_y * lane_offset
+
                 # Random vehicle type (weighted)
                 vtype = random.choices(
                     [VehicleType.CAR, VehicleType.TAXI, VehicleType.TRUCK,
@@ -279,6 +318,13 @@ class VehicleManager:
                 )[0]
 
                 vehicle = Vehicle(x=x, y=y, vehicle_type=vtype, direction=direction)
+
+                # Assign initial path
+                initial_path = self.road_network.get_random_path(x, y, length=8)
+                if initial_path:
+                    vehicle.path = initial_path
+                    vehicle.path_index = 0
+
                 self.vehicles.append(vehicle)
 
     def update(self, dt: float):
