@@ -36,6 +36,11 @@ if PY_CITY_DIR not in sys.path:
 # Import our new city systems
 from city_map import Camera, CityConfig, CityMap, WeatherSystem, DayNightCycle, TimeOfDay
 from game_loop import GameLoopManager, GamePhase, CrimeSimulation, NarratorQueue
+from corruption import CorruptionManager, CORRUPTION_NARRATOR_LINES
+from city_entities import (
+    VehicleManager, AnimalManager, SpecialBuildingManager,
+    InvestigationManager, RoadNetwork, SpecialBuildingType
+)
 
 # NPC type to archetype mapping
 NPC_TYPE_TO_ARCHETYPE = {
@@ -67,6 +72,54 @@ RAIN_NARRATOR_LINES = {
         "The rain stops. But the dampness remains. As do you.",
         "Silence falls with the last drops. Don't you miss the noise already?",
         "The storm passes. But storms always return here. They always return.",
+    ],
+}
+
+# Building entry narrator lines
+BUILDING_NARRATOR_LINES = {
+    "jail": [
+        "The jail. Some never leave. Some... never should have entered.",
+        "Cold bars. Colder justice. They say the walls remember.",
+        "The innocent and the guilty share the same cells here.",
+    ],
+    "courthouse": [
+        "Justice is blind. In this city, it's also deaf.",
+        "The scales tip toward those who can afford the weights.",
+        "Every verdict here is correct. By definition.",
+    ],
+    "hospital": [
+        "They heal bodies here. Souls are... another matter.",
+        "The doctors do their best. Their best isn't always enough.",
+        "Check-in is easy. Checking out... less so.",
+    ],
+    "police_station": [
+        "To protect and serve. The question is... whom?",
+        "Badges and guns. Order from chaos. Or chaos from order.",
+        "File your complaint. It will be... considered.",
+    ],
+    "bank": [
+        "Money flows through here like blood. Sometimes literally.",
+        "Security is tight. Motivation... tighter.",
+        "Everyone has a price. The bank knows all of them.",
+    ],
+    "bar": [
+        "Liquid courage. Liquid forgetfulness. Same difference.",
+        "They come here to forget. Some succeed too well.",
+        "Last call was hours ago. The bar doesn't close.",
+    ],
+}
+
+# Investigation narrator lines
+INVESTIGATION_NARRATOR_LINES = {
+    "clue_found": [
+        "Evidence. The city leaves traces of its sins.",
+        "Another piece of the puzzle. The picture grows darker.",
+        "You're getting closer. To the truth. To the danger.",
+    ],
+    "case_solved": [
+        "Case closed. Justice served. Cold comfort.",
+        "You found the truth. Now you have to live with it.",
+        "Solved. But some questions have no good answers.",
     ],
 }
 
@@ -447,6 +500,42 @@ def run(screen, clock, guide, scene_slug, tone):
     # Initialize crime simulation
     crime_sim = CrimeSimulation(city_config.world_width, city_config.world_height)
 
+    # Initialize corruption manager (entropy-based horror effects)
+    corruption = CorruptionManager()
+
+    # Initialize road network for vehicle pathfinding
+    road_network = RoadNetwork()
+    road_network.build_from_grid(
+        city_config.world_width, city_config.world_height,
+        city_config.block_width, city_config.block_height,
+        city_config.road_width
+    )
+
+    # Initialize vehicle system
+    vehicle_manager = VehicleManager(
+        city_config.world_width, city_config.world_height, road_network
+    )
+    vehicle_manager.spawn_vehicles(road_network.segments)
+
+    # Initialize animal system
+    animal_manager = AnimalManager(city_config.world_width, city_config.world_height)
+    # Collect all building rectangles for collision avoidance
+    building_rects = []
+    for block in city_map.blocks:
+        for building in block.buildings:
+            building_rects.append(building)
+    animal_manager.set_building_rects(building_rects)
+    animal_manager.spawn_animals(city_map.sidewalk_nodes, count=25)
+
+    # Initialize special buildings (jail, courthouse, etc.)
+    special_buildings = SpecialBuildingManager(city_config.world_width, city_config.world_height)
+    # Get block positions from city map for placing special buildings
+    block_positions = [(b.rect.x, b.rect.y, b.rect.width, b.rect.height) for b in city_map.blocks]
+    special_buildings.create_special_buildings(block_positions)
+
+    # Initialize investigation system
+    investigation = InvestigationManager()
+
     # Track exit portal location
     exit_portal = {"x": 0, "y": 0, "active": False, "pulse": 0.0}
 
@@ -502,15 +591,15 @@ def run(screen, clock, guide, scene_slug, tone):
         "Right-click: Move to",
         "E: Talk to NPC",
         "Space/Click: Attack",
-        "G/N: Align",
+        "G: Good | N: Neutral",
         "H: Help police",
+        "J: Join crime",
         "M: Mute narrator",
-        "I: Toggle help",
         "Tab: Status menu",
-        "`: Skip phase",
+        "I: Toggle this help",
         "ESC: Pause menu",
     ]
-    show_instructions = True
+    show_instructions = False  # Off by default - narrator explains I key
 
     # Pause menu state
     paused = False
@@ -536,7 +625,14 @@ def run(screen, clock, guide, scene_slug, tone):
     player_choice = "continue"  # "continue" or "next_level"
 
     while running:
-        dt = clock.tick(60) / 1000.0
+        raw_dt = clock.tick(60) / 1000.0
+
+        # Update corruption entropy based on game phase
+        corruption.update_entropy(game_loop.state.phase.name)
+        corruption.update(raw_dt)
+
+        # Apply time dilation (horror effect - reality stutters)
+        dt = corruption.warp_time(raw_dt)
 
         # Handle events (overlay first)
         events = pygame.event.get()
@@ -550,6 +646,13 @@ def run(screen, clock, guide, scene_slug, tone):
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     publish(PlotEvent.ESC_PRESS)
+                    # Corruption may block escape attempts (horror effect)
+                    if corruption.should_block_escape():
+                        overlay.notifications.show_glitch("No escape. Not yet.", 2.0, "center")
+                        lines = CORRUPTION_NARRATOR_LINES.get("ESCAPE_BLOCKED", [])
+                        if lines and not overlay.audio.muted:
+                            narrator_queue.queue_line(random.choice(lines))
+                        continue  # Skip normal ESC handling
                     # Close any open menus first, then toggle pause
                     if exit_menu_active:
                         exit_menu_active = False
@@ -660,21 +763,33 @@ def run(screen, clock, guide, scene_slug, tone):
                         overlay.notifications.show_glitch("They saw what you did. They won't forget.", 2.0, "top_right")
 
                 elif event.key == pygame.K_e:
-                    # E key - NPC interaction
-                    interacted = player.interact(all_npcs)
-                    if interacted:
-                        npc_id = f"npc_{id(interacted)}"
-                        situation = _get_situation(interacted, player, plot_state)
+                    # E key - NPC interaction OR building entry
+                    # First check for special building nearby
+                    nearby_building = special_buildings.get_building_near(player.x, player.y)
+                    if nearby_building:
+                        # Enter the building
+                        building_type = nearby_building.building_type.value
+                        overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
+                        lines = BUILDING_NARRATOR_LINES.get(building_type, [])
+                        if lines and not overlay.audio.muted:
+                            narrator_queue.queue_line(random.choice(lines))
+                        # TODO: Building interior system
+                    else:
+                        # Try NPC interaction
+                        interacted = player.interact(all_npcs)
+                        if interacted:
+                            npc_id = f"npc_{id(interacted)}"
+                            situation = _get_situation(interacted, player, plot_state)
 
-                        # Mark secret as revealed if NPC shares it
-                        if situation == "reveal_secret":
-                            interacted.secret_revealed = True
+                            # Mark secret as revealed if NPC shares it
+                            if situation == "reveal_secret":
+                                interacted.secret_revealed = True
 
-                        overlay.show_npc_dialogue(npc_id, "", situation)
-                        dialog_timer = 4.0
-                        talking_npc = interacted
-                        idle_timer = 0.0
-                        game_loop.on_player_talked(interacted.type)
+                            overlay.show_npc_dialogue(npc_id, "", situation)
+                            dialog_timer = 4.0
+                            talking_npc = interacted
+                            idle_timer = 0.0
+                            game_loop.on_player_talked(interacted.type)
 
                 elif event.key == pygame.K_SPACE:
                     # Space - Attack action
@@ -743,8 +858,15 @@ def run(screen, clock, guide, scene_slug, tone):
             elif dx != 0 or dy != 0:
                 # Keyboard movement cancels click-to-move
                 move_target = None
+                # Add drift when stopping (corruption effect)
+                corruption.add_movement_drift(dx, dy)
 
-            player.move(dx, dy, city_map, dt)
+            # Apply movement drift (character overshoots when entropy is high)
+            drift_x, drift_y = corruption.get_movement_drift()
+            final_dx = dx + drift_x * 0.1
+            final_dy = dy + drift_y * 0.1
+
+            player.move(final_dx, final_dy, city_map, dt)
 
             # Update game loop (tutorial, phases, anomalies)
             game_loop.update(dt, player.x, player.y, player_moving)
@@ -778,12 +900,28 @@ def run(screen, clock, guide, scene_slug, tone):
                 if line_to_speak:
                     guide.speak_async(line_to_speak)
 
-            # Update NPCs
+            # Update NPCs (corruption may freeze individual NPCs)
             for npc in all_npcs:
                 if npc is talking_npc and dialog_timer > 0:
                     continue  # Pause talking NPC
                 if not npc.in_jail:
-                    npc.move(dt)
+                    # Corruption: occasionally skip NPC update (freeze glitch)
+                    if not corruption.should_skip_npc_update():
+                        npc.move(dt)
+
+            # Update vehicles
+            vehicle_manager.update(dt)
+
+            # Update animals
+            animal_manager.update(dt, player.x, player.y)
+
+            # Check for clue discovery
+            clue = investigation.check_clue_discovery(player.x, player.y)
+            if clue:
+                overlay.notifications.show_glitch(f"CLUE: {clue.description}", 3.0, "center")
+                lines = INVESTIGATION_NARRATOR_LINES.get("clue_found", [])
+                if lines and not overlay.audio.muted:
+                    narrator_queue.queue_line(random.choice(lines))
 
             # Update day/night cycle
             time_event = day_night.update(dt)
@@ -818,9 +956,15 @@ def run(screen, clock, guide, scene_slug, tone):
         overlay.update(dt)
 
         # --- Rendering ---
-        # Draw city with day/night lighting
-        darkness_alpha = day_night.get_darkness_alpha()
-        city_map.draw(screen, camera, darkness_alpha)
+        # Corruption: afterimage effect (skip screen clear occasionally)
+        if not corruption.should_skip_screen_clear():
+            # Normal: clear and draw city
+            darkness_alpha = day_night.get_darkness_alpha()
+            city_map.draw(screen, camera, darkness_alpha)
+        else:
+            # Afterimage: don't clear - creates smear effect
+            darkness_alpha = day_night.get_darkness_alpha()
+            city_map.draw(screen, camera, darkness_alpha)
 
         # Draw anomaly markers (before NPCs so they appear under)
         for anomaly in game_loop.state.anomalies:
@@ -933,6 +1077,12 @@ def run(screen, clock, guide, scene_slug, tone):
                         crime_text = crime_font.render("CRIME", True, (255, flash // 2, flash // 2))
                         screen.blit(crime_text, (int(cx) - 25, int(cy) - 60))
 
+        # Draw vehicles (below NPCs)
+        vehicle_manager.draw(screen, camera)
+
+        # Draw animals
+        animal_manager.draw(screen, camera)
+
         # Draw NPCs
         for npc in all_npcs:
             if not npc.in_jail and not npc.in_building:
@@ -940,6 +1090,12 @@ def run(screen, clock, guide, scene_slug, tone):
 
         # Draw player
         player.draw(screen, camera)
+
+        # Draw special buildings (with highlighting near player)
+        special_buildings.draw(screen, camera, player.x, player.y)
+
+        # Draw investigation clues
+        investigation.draw_clues(screen, camera)
 
         # Draw weather effects on top of world
         weather.draw(screen, camera)
@@ -1061,6 +1217,17 @@ def run(screen, clock, guide, scene_slug, tone):
             target_screen_x, target_screen_y = camera.apply(move_target[0], move_target[1])
             pygame.draw.circle(screen, (100, 255, 100), (int(target_screen_x), int(target_screen_y)), 8, 2)
             pygame.draw.circle(screen, (150, 255, 150), (int(target_screen_x), int(target_screen_y)), 4)
+
+        # Corruption: visual effects layer (glitch rects, scan lines)
+        corruption.draw_visual_corruption(screen)
+        corruption.draw_scan_lines(screen)
+
+        # Corruption: narrator triggers from entropy effects
+        corruption_event = corruption.get_narrator_trigger()
+        if corruption_event and not overlay.audio.muted:
+            lines = CORRUPTION_NARRATOR_LINES.get(corruption_event, [])
+            if lines:
+                narrator_queue.queue_line(random.choice(lines))
 
         pygame.display.flip()
 
@@ -1455,7 +1622,7 @@ def _do_attack(player, all_npcs, overlay, game_loop, narrator_queue):
         ]
         narrator_queue.queue_line(random.choice(comments))
     else:
-        overlay.notifications.show_glitch("Nothing to hit.", 1.0, "top_right")
+        overlay.notifications.show_glitch("Nothing to hit.", 1.0, "center")
 
 
 def _generate_backstory(npc_type):

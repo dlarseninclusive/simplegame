@@ -143,45 +143,51 @@ class TutorialInstruction:
 TUTORIAL_SEQUENCE = [
     TutorialInstruction(
         TutorialStep.WELCOME,
-        "Welcome to the city. I'll be your guide.",
+        "Welcome to the city. I'll be your guide. Press I if you need help with controls.",
         wait_for=None,  # Just wait for delay
-        delay_after=4.0
+        delay_after=5.0
     ),
     TutorialInstruction(
         TutorialStep.MOVE,
-        "Use the arrow keys to move.",
+        "Use the arrow keys to move. Or right-click to walk somewhere.",
         wait_for="move",  # Wait for player to move
         delay_after=2.0
     ),
     TutorialInstruction(
         TutorialStep.MOVE_MORE,
-        "Good. The city is... large.",
+        "Good. The city stretches in all directions. It... loops back on itself.",
         wait_for=None,
         delay_after=5.0
     ),
     TutorialInstruction(
         TutorialStep.FIND_NPC,
-        "Find someone to talk to. Press SPACE near them.",
+        "Find someone to talk to. Press E near them to interact.",
         wait_for="talk",  # Wait for player to talk to NPC
         delay_after=2.0,
         is_creepy=True
     ),
     TutorialInstruction(
         TutorialStep.ALIGNMENT_INTRO,
-        "You can choose who you want to be here.",
+        "You can choose who you want to be here. Hero or villain. The city watches.",
         wait_for=None,
         delay_after=4.0
     ),
     TutorialInstruction(
         TutorialStep.ALIGNMENT_CHOICE,
-        "Press G for good. Press E for evil.",
+        "Press G for good. N for neutral. Or... let your actions decide.",
         wait_for="align",  # Wait for player to choose alignment
         delay_after=3.0,
         is_creepy=True
     ),
     TutorialInstruction(
+        TutorialStep.MUTE_HINT,
+        "Press M if my voice... bothers you. Tab shows your status. Space to... defend yourself.",
+        wait_for=None,
+        delay_after=4.0
+    ),
+    TutorialInstruction(
         TutorialStep.TUTORIAL_END,
-        "You've learned enough. Now... observe the city.",
+        "You've learned enough. Now... observe the city. Watch for crimes. Or commit them.",
         wait_for=None,
         delay_after=4.0
     ),
