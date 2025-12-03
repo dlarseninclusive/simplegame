@@ -39,7 +39,8 @@ from game_loop import GameLoopManager, GamePhase, CrimeSimulation, NarratorQueue
 from corruption import CorruptionManager, CORRUPTION_NARRATOR_LINES
 from city_entities import (
     VehicleManager, AnimalManager, SpecialBuildingManager,
-    InvestigationManager, RoadNetwork, SpecialBuildingType
+    InvestigationManager, RoadNetwork, SpecialBuildingType,
+    InteriorManager
 )
 
 # NPC type to archetype mapping
@@ -536,6 +537,9 @@ def run(screen, clock, guide, scene_slug, tone):
     # Initialize investigation system
     investigation = InvestigationManager()
 
+    # Initialize interior system for entering buildings
+    interior_manager = InteriorManager(SCREEN_WIDTH, SCREEN_HEIGHT)
+
     # Track exit portal location
     exit_portal = {"x": 0, "y": 0, "active": False, "pulse": 0.0}
 
@@ -763,33 +767,42 @@ def run(screen, clock, guide, scene_slug, tone):
                         overlay.notifications.show_glitch("They saw what you did. They won't forget.", 2.0, "top_right")
 
                 elif event.key == pygame.K_e:
-                    # E key - NPC interaction OR building entry
-                    # First check for special building nearby
-                    nearby_building = special_buildings.get_building_near(player.x, player.y)
-                    if nearby_building:
-                        # Enter the building
-                        building_type = nearby_building.building_type.value
-                        overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
-                        lines = BUILDING_NARRATOR_LINES.get(building_type, [])
-                        if lines and not overlay.audio.muted:
-                            narrator_queue.queue_line(random.choice(lines))
-                        # TODO: Building interior system
+                    # E key - Exit building, enter building, or NPC interaction
+                    if interior_manager.is_inside:
+                        # Check if near exit
+                        if interior_manager.current_interior and interior_manager.current_interior.is_near_exit(
+                            interior_manager.interior_player_x, interior_manager.interior_player_y
+                        ):
+                            exit_pos = interior_manager.exit_building()
+                            player.x, player.y = exit_pos
+                            overlay.notifications.show_glitch("Exiting...", 1.0, "center")
                     else:
-                        # Try NPC interaction
-                        interacted = player.interact(all_npcs)
-                        if interacted:
-                            npc_id = f"npc_{id(interacted)}"
-                            situation = _get_situation(interacted, player, plot_state)
+                        # Check for special building nearby
+                        nearby_building = special_buildings.get_building_near(player.x, player.y)
+                        if nearby_building:
+                            # Enter the building
+                            if interior_manager.enter_building(nearby_building):
+                                building_type = nearby_building.building_type.value
+                                overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
+                                lines = BUILDING_NARRATOR_LINES.get(building_type, [])
+                                if lines and not overlay.audio.muted:
+                                    narrator_queue.queue_line(random.choice(lines))
+                        else:
+                            # Try NPC interaction
+                            interacted = player.interact(all_npcs)
+                            if interacted:
+                                npc_id = f"npc_{id(interacted)}"
+                                situation = _get_situation(interacted, player, plot_state)
 
-                            # Mark secret as revealed if NPC shares it
-                            if situation == "reveal_secret":
-                                interacted.secret_revealed = True
+                                # Mark secret as revealed if NPC shares it
+                                if situation == "reveal_secret":
+                                    interacted.secret_revealed = True
 
-                            overlay.show_npc_dialogue(npc_id, "", situation)
-                            dialog_timer = 4.0
-                            talking_npc = interacted
-                            idle_timer = 0.0
-                            game_loop.on_player_talked(interacted.type)
+                                overlay.show_npc_dialogue(npc_id, "", situation)
+                                dialog_timer = 4.0
+                                talking_npc = interacted
+                                idle_timer = 0.0
+                                game_loop.on_player_talked(interacted.type)
 
                 elif event.key == pygame.K_SPACE:
                     # Space - Attack action
@@ -812,6 +825,20 @@ def run(screen, clock, guide, scene_slug, tone):
 
         # Skip game updates when paused or in exit menu
         if not paused:
+            # Handle interior movement separately
+            if interior_manager.is_inside:
+                keys_pressed = {
+                    pygame.K_LEFT: pygame.key.get_pressed()[pygame.K_LEFT],
+                    pygame.K_RIGHT: pygame.key.get_pressed()[pygame.K_RIGHT],
+                    pygame.K_UP: pygame.key.get_pressed()[pygame.K_UP],
+                    pygame.K_DOWN: pygame.key.get_pressed()[pygame.K_DOWN],
+                    pygame.K_a: pygame.key.get_pressed()[pygame.K_a],
+                    pygame.K_d: pygame.key.get_pressed()[pygame.K_d],
+                    pygame.K_w: pygame.key.get_pressed()[pygame.K_w],
+                    pygame.K_s: pygame.key.get_pressed()[pygame.K_s],
+                }
+                interior_manager.update(keys_pressed, dt)
+
             # Track idle time
             if (player.x, player.y) == last_player_pos:
                 idle_timer += dt
@@ -1217,6 +1244,10 @@ def run(screen, clock, guide, scene_slug, tone):
             target_screen_x, target_screen_y = camera.apply(move_target[0], move_target[1])
             pygame.draw.circle(screen, (100, 255, 100), (int(target_screen_x), int(target_screen_y)), 8, 2)
             pygame.draw.circle(screen, (150, 255, 150), (int(target_screen_x), int(target_screen_y)), 4)
+
+        # Draw building interior if inside
+        if interior_manager.is_inside:
+            interior_manager.draw(screen)
 
         # Corruption: visual effects layer (glitch rects, scan lines)
         corruption.draw_visual_corruption(screen)

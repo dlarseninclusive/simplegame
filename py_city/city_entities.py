@@ -1063,6 +1063,465 @@ class InvestigationManager:
 
 
 # =============================================================================
+# BUILDING INTERIORS
+# =============================================================================
+
+class InteriorType(Enum):
+    """Types of room/furniture arrangements."""
+    OFFICE = "office"
+    JAIL_CELL = "jail_cell"
+    COURTROOM = "courtroom"
+    HOSPITAL_ROOM = "hospital_room"
+    SHOP_FLOOR = "shop_floor"
+    BAR_ROOM = "bar_room"
+    LIVING_ROOM = "living_room"
+    BANK_LOBBY = "bank_lobby"
+
+
+@dataclass
+class Furniture:
+    """A piece of furniture in a building interior."""
+    x: float
+    y: float
+    width: int
+    height: int
+    furniture_type: str  # desk, chair, bed, counter, etc.
+    color: Tuple[int, int, int] = (100, 80, 60)
+    interactable: bool = False
+    interaction_message: str = ""
+
+    def draw(self, screen: pygame.Surface, offset_x: int = 0, offset_y: int = 0):
+        """Draw the furniture piece."""
+        rect = pygame.Rect(int(self.x) + offset_x, int(self.y) + offset_y,
+                          self.width, self.height)
+        pygame.draw.rect(screen, self.color, rect)
+        pygame.draw.rect(screen, (50, 40, 30), rect, 1)
+
+        # Type-specific details
+        if self.furniture_type == "desk":
+            # Drawer handles
+            pygame.draw.rect(screen, (70, 60, 50),
+                           (rect.x + 5, rect.centery - 2, 15, 4))
+        elif self.furniture_type == "chair":
+            # Chair back
+            pygame.draw.rect(screen, (max(0, self.color[0] - 20),
+                                     max(0, self.color[1] - 20),
+                                     max(0, self.color[2] - 20)),
+                           (rect.x + 2, rect.y - 8, rect.width - 4, 10))
+        elif self.furniture_type == "bed":
+            # Pillow
+            pygame.draw.rect(screen, (220, 220, 200),
+                           (rect.x + 5, rect.y + 5, 20, 15))
+            # Blanket
+            pygame.draw.rect(screen, (100, 100, 150),
+                           (rect.x + 5, rect.y + 25, rect.width - 10, rect.height - 30))
+        elif self.furniture_type == "counter":
+            # Counter surface highlight
+            pygame.draw.rect(screen, (min(255, self.color[0] + 20),
+                                     min(255, self.color[1] + 20),
+                                     min(255, self.color[2] + 20)),
+                           (rect.x, rect.y, rect.width, 5))
+        elif self.furniture_type == "shelf":
+            # Shelf items
+            for i in range(3):
+                item_color = random.choice([(150, 50, 50), (50, 150, 50), (50, 50, 150)])
+                pygame.draw.rect(screen, item_color,
+                               (rect.x + 5 + i * 15, rect.y + 5, 10, 15))
+        elif self.furniture_type == "toilet":
+            pygame.draw.ellipse(screen, (230, 230, 230), rect)
+            pygame.draw.ellipse(screen, (100, 100, 100), rect, 1)
+        elif self.furniture_type == "sink":
+            pygame.draw.rect(screen, (200, 200, 200), rect)
+            pygame.draw.ellipse(screen, (150, 150, 150),
+                              (rect.x + 5, rect.y + 5, rect.width - 10, rect.height - 10))
+
+
+@dataclass
+class BuildingInterior:
+    """The interior of a building."""
+    width: int
+    height: int
+    interior_type: InteriorType
+    floor_color: Tuple[int, int, int] = (80, 70, 60)
+    wall_color: Tuple[int, int, int] = (150, 140, 130)
+    furniture: List[Furniture] = field(default_factory=list)
+
+    # Door position (for exiting)
+    exit_x: float = 0
+    exit_y: float = 0
+
+    # NPCs in the building
+    npcs: List[any] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Generate interior layout based on type."""
+        self._generate_layout()
+        # Exit door at bottom center
+        self.exit_x = self.width // 2
+        self.exit_y = self.height - 10
+
+    def _generate_layout(self):
+        """Generate furniture layout based on interior type."""
+        self.furniture = []
+
+        if self.interior_type == InteriorType.OFFICE:
+            self.floor_color = (100, 90, 80)
+            self.wall_color = (180, 175, 165)
+            # Desk
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 40, y=self.height // 3,
+                width=80, height=40, furniture_type="desk",
+                color=(120, 80, 50)
+            ))
+            # Chair behind desk
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 15, y=self.height // 3 - 30,
+                width=30, height=25, furniture_type="chair",
+                color=(60, 50, 40)
+            ))
+            # Filing cabinet
+            self.furniture.append(Furniture(
+                x=30, y=30,
+                width=40, height=60, furniture_type="shelf",
+                color=(80, 80, 90)
+            ))
+
+        elif self.interior_type == InteriorType.JAIL_CELL:
+            self.floor_color = (70, 70, 75)
+            self.wall_color = (100, 100, 105)
+            # Bunk bed
+            self.furniture.append(Furniture(
+                x=30, y=self.height // 2 - 30,
+                width=60, height=50, furniture_type="bed",
+                color=(80, 80, 80)
+            ))
+            # Toilet
+            self.furniture.append(Furniture(
+                x=self.width - 60, y=self.height - 80,
+                width=30, height=35, furniture_type="toilet",
+                color=(200, 200, 200)
+            ))
+            # Sink
+            self.furniture.append(Furniture(
+                x=self.width - 60, y=self.height - 130,
+                width=25, height=20, furniture_type="sink",
+                color=(180, 180, 180)
+            ))
+
+        elif self.interior_type == InteriorType.COURTROOM:
+            self.floor_color = (120, 100, 70)
+            self.wall_color = (160, 140, 100)
+            # Judge's bench
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 50, y=40,
+                width=100, height=30, furniture_type="counter",
+                color=(100, 60, 30)
+            ))
+            # Witness stand
+            self.furniture.append(Furniture(
+                x=self.width // 4, y=100,
+                width=40, height=40, furniture_type="desk",
+                color=(90, 55, 25)
+            ))
+            # Jury box (benches)
+            for i in range(2):
+                self.furniture.append(Furniture(
+                    x=self.width - 100, y=100 + i * 50,
+                    width=80, height=30, furniture_type="counter",
+                    color=(80, 50, 20)
+                ))
+
+        elif self.interior_type == InteriorType.HOSPITAL_ROOM:
+            self.floor_color = (200, 200, 200)
+            self.wall_color = (220, 220, 220)
+            # Hospital bed
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 30, y=self.height // 3,
+                width=60, height=90, furniture_type="bed",
+                color=(200, 200, 200)
+            ))
+            # Medical equipment cart
+            self.furniture.append(Furniture(
+                x=self.width - 70, y=self.height // 3,
+                width=40, height=50, furniture_type="shelf",
+                color=(150, 150, 160)
+            ))
+
+        elif self.interior_type == InteriorType.BAR_ROOM:
+            self.floor_color = (60, 50, 40)
+            self.wall_color = (100, 80, 60)
+            # Bar counter
+            self.furniture.append(Furniture(
+                x=30, y=60,
+                width=self.width - 60, height=25, furniture_type="counter",
+                color=(80, 50, 30)
+            ))
+            # Bar stools
+            for i in range(4):
+                self.furniture.append(Furniture(
+                    x=60 + i * 50, y=100,
+                    width=20, height=20, furniture_type="chair",
+                    color=(50, 35, 20)
+                ))
+            # Tables
+            for i in range(2):
+                self.furniture.append(Furniture(
+                    x=50 + i * 120, y=self.height - 100,
+                    width=50, height=50, furniture_type="desk",
+                    color=(70, 45, 25)
+                ))
+
+        elif self.interior_type == InteriorType.SHOP_FLOOR:
+            self.floor_color = (150, 140, 130)
+            self.wall_color = (180, 170, 160)
+            # Checkout counter
+            self.furniture.append(Furniture(
+                x=30, y=self.height - 80,
+                width=60, height=30, furniture_type="counter",
+                color=(100, 80, 60)
+            ))
+            # Shelves
+            for i in range(3):
+                self.furniture.append(Furniture(
+                    x=30 + i * 70, y=40,
+                    width=50, height=100, furniture_type="shelf",
+                    color=(120, 100, 80)
+                ))
+
+        elif self.interior_type == InteriorType.BANK_LOBBY:
+            self.floor_color = (180, 170, 150)
+            self.wall_color = (200, 190, 170)
+            # Teller counters
+            for i in range(3):
+                self.furniture.append(Furniture(
+                    x=40 + i * 80, y=50,
+                    width=60, height=25, furniture_type="counter",
+                    color=(100, 80, 60)
+                ))
+            # Waiting area chairs
+            for i in range(4):
+                self.furniture.append(Furniture(
+                    x=50 + i * 50, y=self.height - 80,
+                    width=25, height=25, furniture_type="chair",
+                    color=(60, 50, 40)
+                ))
+
+        elif self.interior_type == InteriorType.LIVING_ROOM:
+            self.floor_color = (140, 120, 100)
+            self.wall_color = (180, 170, 150)
+            # Couch
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 50, y=self.height // 2,
+                width=100, height=40, furniture_type="counter",
+                color=(80, 60, 100)
+            ))
+            # Coffee table
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 30, y=self.height // 2 + 55,
+                width=60, height=30, furniture_type="desk",
+                color=(100, 70, 40)
+            ))
+            # TV stand
+            self.furniture.append(Furniture(
+                x=self.width // 2 - 40, y=40,
+                width=80, height=20, furniture_type="shelf",
+                color=(50, 50, 50)
+            ))
+
+    def get_collision_rects(self) -> List[pygame.Rect]:
+        """Get collision rectangles for furniture."""
+        return [pygame.Rect(f.x, f.y, f.width, f.height) for f in self.furniture]
+
+    def is_near_exit(self, x: float, y: float, radius: float = 30) -> bool:
+        """Check if position is near the exit."""
+        dx = x - self.exit_x
+        dy = y - self.exit_y
+        return math.sqrt(dx * dx + dy * dy) < radius
+
+    def draw(self, screen: pygame.Surface, offset_x: int = 0, offset_y: int = 0):
+        """Draw the building interior."""
+        # Floor
+        floor_rect = pygame.Rect(offset_x, offset_y, self.width, self.height)
+        pygame.draw.rect(screen, self.floor_color, floor_rect)
+
+        # Walls (border)
+        pygame.draw.rect(screen, self.wall_color, floor_rect, 8)
+        pygame.draw.rect(screen, (50, 50, 50), floor_rect, 2)
+
+        # Draw furniture
+        for furniture in self.furniture:
+            furniture.draw(screen, offset_x, offset_y)
+
+        # Exit door
+        exit_screen_x = int(self.exit_x) + offset_x
+        exit_screen_y = int(self.exit_y) + offset_y
+        pygame.draw.rect(screen, (80, 60, 40),
+                        (exit_screen_x - 20, exit_screen_y - 5, 40, 15))
+        # "EXIT" text
+        font = pygame.font.Font(None, 16)
+        exit_text = font.render("EXIT", True, (255, 200, 200))
+        screen.blit(exit_text, (exit_screen_x - 15, exit_screen_y - 3))
+
+
+class InteriorManager:
+    """Manages building interiors and transitions."""
+
+    # Map building types to interior types
+    BUILDING_TO_INTERIOR = {
+        SpecialBuildingType.JAIL: InteriorType.JAIL_CELL,
+        SpecialBuildingType.COURTHOUSE: InteriorType.COURTROOM,
+        SpecialBuildingType.HOSPITAL: InteriorType.HOSPITAL_ROOM,
+        SpecialBuildingType.POLICE_STATION: InteriorType.OFFICE,
+        SpecialBuildingType.BANK: InteriorType.BANK_LOBBY,
+        SpecialBuildingType.BAR: InteriorType.BAR_ROOM,
+        SpecialBuildingType.APARTMENT: InteriorType.LIVING_ROOM,
+        SpecialBuildingType.SHOP: InteriorType.SHOP_FLOOR,
+    }
+
+    def __init__(self, screen_width: int, screen_height: int):
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.current_interior: Optional[BuildingInterior] = None
+        self.current_building: Optional[SpecialBuilding] = None
+        self.is_inside = False
+
+        # Player position within interior
+        self.interior_player_x = 0
+        self.interior_player_y = 0
+
+        # Interior dimensions (scaled to fit screen)
+        self.interior_width = int(screen_width * 0.7)
+        self.interior_height = int(screen_height * 0.7)
+        self.interior_offset_x = (screen_width - self.interior_width) // 2
+        self.interior_offset_y = (screen_height - self.interior_height) // 2
+
+    def enter_building(self, building: SpecialBuilding) -> bool:
+        """Enter a building, creating its interior."""
+        if not building.enterable:
+            return False
+
+        interior_type = self.BUILDING_TO_INTERIOR.get(
+            building.building_type,
+            InteriorType.OFFICE
+        )
+
+        self.current_interior = BuildingInterior(
+            width=self.interior_width,
+            height=self.interior_height,
+            interior_type=interior_type
+        )
+        self.current_building = building
+        self.is_inside = True
+
+        # Place player near entrance
+        self.interior_player_x = self.interior_width // 2
+        self.interior_player_y = self.interior_height - 50
+
+        return True
+
+    def exit_building(self) -> Tuple[float, float]:
+        """Exit the current building. Returns the door position to place player."""
+        if not self.is_inside or not self.current_building:
+            return (0, 0)
+
+        door_x = self.current_building.door_x
+        door_y = self.current_building.door_y + 30  # Slightly below door
+        self.current_interior = None
+        self.current_building = None
+        self.is_inside = False
+
+        return (door_x, door_y)
+
+    def update(self, keys_pressed: dict, dt: float) -> str:
+        """Update interior state. Returns action string."""
+        if not self.is_inside or not self.current_interior:
+            return ""
+
+        # Movement
+        speed = 150 * dt
+        dx, dy = 0, 0
+
+        if keys_pressed.get(pygame.K_LEFT) or keys_pressed.get(pygame.K_a):
+            dx = -speed
+        if keys_pressed.get(pygame.K_RIGHT) or keys_pressed.get(pygame.K_d):
+            dx = speed
+        if keys_pressed.get(pygame.K_UP) or keys_pressed.get(pygame.K_w):
+            dy = -speed
+        if keys_pressed.get(pygame.K_DOWN) or keys_pressed.get(pygame.K_s):
+            dy = speed
+
+        # Apply movement with collision
+        new_x = self.interior_player_x + dx
+        new_y = self.interior_player_y + dy
+
+        # Check furniture collision
+        player_rect = pygame.Rect(new_x - 10, new_y - 10, 20, 20)
+        collision = False
+        for furniture in self.current_interior.furniture:
+            furn_rect = pygame.Rect(furniture.x, furniture.y,
+                                   furniture.width, furniture.height)
+            if player_rect.colliderect(furn_rect):
+                collision = True
+                break
+
+        if not collision:
+            # Keep within bounds
+            self.interior_player_x = max(20, min(self.interior_width - 20, new_x))
+            self.interior_player_y = max(20, min(self.interior_height - 20, new_y))
+
+        # Check exit
+        if self.current_interior.is_near_exit(
+            self.interior_player_x, self.interior_player_y
+        ):
+            return "near_exit"
+
+        return ""
+
+    def draw(self, screen: pygame.Surface):
+        """Draw the interior and player."""
+        if not self.is_inside or not self.current_interior:
+            return
+
+        # Dim background
+        dim_surface = pygame.Surface((self.screen_width, self.screen_height))
+        dim_surface.fill((0, 0, 0))
+        dim_surface.set_alpha(150)
+        screen.blit(dim_surface, (0, 0))
+
+        # Draw interior
+        self.current_interior.draw(screen, self.interior_offset_x, self.interior_offset_y)
+
+        # Draw player
+        player_screen_x = int(self.interior_player_x) + self.interior_offset_x
+        player_screen_y = int(self.interior_player_y) + self.interior_offset_y
+
+        # Simple player representation
+        pygame.draw.circle(screen, (100, 100, 200), (player_screen_x, player_screen_y), 10)
+        pygame.draw.circle(screen, (50, 50, 150), (player_screen_x, player_screen_y), 10, 2)
+
+        # Building name header
+        if self.current_building:
+            font = pygame.font.Font(None, 32)
+            name_text = font.render(self.current_building.name, True, (255, 255, 255))
+            name_rect = name_text.get_rect(centerx=self.screen_width // 2, y=20)
+            # Background
+            bg_rect = name_rect.inflate(20, 10)
+            pygame.draw.rect(screen, (0, 0, 0), bg_rect)
+            pygame.draw.rect(screen, (100, 100, 100), bg_rect, 2)
+            screen.blit(name_text, name_rect)
+
+        # Exit prompt if near exit
+        if self.current_interior.is_near_exit(
+            self.interior_player_x, self.interior_player_y
+        ):
+            font = pygame.font.Font(None, 24)
+            prompt = font.render("Press E to Exit", True, (255, 255, 100))
+            prompt_rect = prompt.get_rect(centerx=self.screen_width // 2,
+                                         y=self.screen_height - 50)
+            screen.blit(prompt, prompt_rect)
+
+
+# =============================================================================
 # ROAD NETWORK (for vehicle pathfinding)
 # =============================================================================
 

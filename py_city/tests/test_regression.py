@@ -83,7 +83,8 @@ from city_entities import (
     Vehicle, VehicleType, VehicleManager,
     Animal, AnimalType, AnimalManager,
     SpecialBuilding, SpecialBuildingType, SpecialBuildingManager,
-    RoadNetwork, Clue, ClueType, CrimeCase, InvestigationManager
+    RoadNetwork, Clue, ClueType, CrimeCase, InvestigationManager,
+    InteriorType, Furniture, BuildingInterior, InteriorManager
 )
 
 
@@ -601,6 +602,101 @@ class TestInvestigationSystem(unittest.TestCase):
         self.assertEqual(len(case.clues), 3)
         self.assertFalse(case.solved)
         self.assertEqual(len(manager.active_cases), 1)
+
+
+class TestBuildingInteriors(unittest.TestCase):
+    """Tests for building interior system."""
+
+    def test_interior_types_exist(self):
+        """Test all interior types are defined."""
+        types = list(InteriorType)
+        self.assertIn(InteriorType.OFFICE, types)
+        self.assertIn(InteriorType.JAIL_CELL, types)
+        self.assertIn(InteriorType.COURTROOM, types)
+        self.assertIn(InteriorType.BAR_ROOM, types)
+        self.assertIn(InteriorType.SHOP_FLOOR, types)
+
+    def test_furniture_creation(self):
+        """Test furniture can be created."""
+        furniture = Furniture(x=50, y=50, width=30, height=20, furniture_type="desk")
+        self.assertEqual(furniture.x, 50)
+        self.assertEqual(furniture.furniture_type, "desk")
+        self.assertFalse(furniture.interactable)
+
+    def test_building_interior_creation(self):
+        """Test building interior generates furniture."""
+        interior = BuildingInterior(width=400, height=300, interior_type=InteriorType.OFFICE)
+        self.assertGreater(len(interior.furniture), 0)
+        self.assertEqual(interior.width, 400)
+        self.assertEqual(interior.exit_x, 200)  # width // 2
+
+    def test_interior_layout_varies_by_type(self):
+        """Test different interior types have different layouts."""
+        office = BuildingInterior(width=400, height=300, interior_type=InteriorType.OFFICE)
+        bar = BuildingInterior(width=400, height=300, interior_type=InteriorType.BAR_ROOM)
+
+        # Different floor colors indicate different layouts
+        self.assertNotEqual(office.floor_color, bar.floor_color)
+
+    def test_interior_collision_rects(self):
+        """Test collision rectangles are generated."""
+        interior = BuildingInterior(width=400, height=300, interior_type=InteriorType.JAIL_CELL)
+        rects = interior.get_collision_rects()
+        self.assertEqual(len(rects), len(interior.furniture))
+
+    def test_interior_near_exit(self):
+        """Test exit detection."""
+        interior = BuildingInterior(width=400, height=300, interior_type=InteriorType.OFFICE)
+        # Near exit (bottom center)
+        self.assertTrue(interior.is_near_exit(200, 290, radius=30))
+        # Far from exit
+        self.assertFalse(interior.is_near_exit(50, 50, radius=30))
+
+    def test_interior_manager_init(self):
+        """Test interior manager initialization."""
+        manager = InteriorManager(800, 600)
+        self.assertFalse(manager.is_inside)
+        self.assertIsNone(manager.current_interior)
+
+    def test_enter_building(self):
+        """Test entering a building."""
+        manager = InteriorManager(800, 600)
+        building = SpecialBuilding(
+            x=100, y=100, width=100, height=80,
+            building_type=SpecialBuildingType.BAR
+        )
+
+        result = manager.enter_building(building)
+        self.assertTrue(result)
+        self.assertTrue(manager.is_inside)
+        self.assertIsNotNone(manager.current_interior)
+        self.assertEqual(manager.current_interior.interior_type, InteriorType.BAR_ROOM)
+
+    def test_exit_building(self):
+        """Test exiting a building."""
+        manager = InteriorManager(800, 600)
+        building = SpecialBuilding(
+            x=100, y=100, width=100, height=80,
+            building_type=SpecialBuildingType.BANK
+        )
+
+        manager.enter_building(building)
+        self.assertTrue(manager.is_inside)
+
+        exit_pos = manager.exit_building()
+        self.assertFalse(manager.is_inside)
+        self.assertIsNone(manager.current_interior)
+        # Exit position should be near door
+        self.assertEqual(exit_pos[0], building.door_x)
+
+    def test_building_type_to_interior_mapping(self):
+        """Test all building types map to interior types."""
+        for building_type in SpecialBuildingType:
+            interior_type = InteriorManager.BUILDING_TO_INTERIOR.get(building_type)
+            self.assertIsNotNone(
+                interior_type,
+                f"Building type {building_type} has no interior mapping"
+            )
 
 
 if __name__ == '__main__':
