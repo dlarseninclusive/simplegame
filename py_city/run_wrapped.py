@@ -538,7 +538,7 @@ def run(screen, clock, guide, scene_slug, tone):
     investigation = InvestigationManager()
 
     # Initialize interior system for entering buildings
-    interior_manager = InteriorManager(SCREEN_WIDTH, SCREEN_HEIGHT)
+    interior_manager = InteriorManager(WIDTH, HEIGHT)
 
     # Track exit portal location
     exit_portal = {"x": 0, "y": 0, "active": False, "pulse": 0.0}
