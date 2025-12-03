@@ -4,6 +4,23 @@ Running log of bugs found and fixed during development. Append new fixes to the 
 
 ---
 
+## 2025-12-02: InteriorNPCRole forward reference error
+
+**Error:**
+```
+NameError: name 'InteriorNPCRole' is not defined
+```
+
+**Location:** `city_entities.py:1390` in `InteriorManager` class definition
+
+**Cause:** `InteriorManager.INTERIOR_TO_NPCS` dictionary referenced `InteriorNPCRole` enum which is defined later in the file. Python evaluates class-level attributes at class definition time.
+
+**Fix:** Changed to use string role names in the mapping and convert to enum values in `enter_building()` method where `InteriorNPCRole` is guaranteed to be defined.
+
+**Commit:** `653ec32`
+
+---
+
 ## 2025-12-02: InteriorManager variable name error
 
 **Error:**
