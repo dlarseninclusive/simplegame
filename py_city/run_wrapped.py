@@ -351,7 +351,7 @@ class CityPlayer:
         return None
 
 
-def run(screen, clock, guide, scene_slug, tone):
+def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None):
     """
     Run py_city with Beginner's Guide integration.
 
@@ -361,17 +361,25 @@ def run(screen, clock, guide, scene_slug, tone):
         guide: Guide instance for TTS
         scene_slug: Scene identifier
         tone: Narrator tone
+        input_handler: Shared InputHandler (created if not provided)
+        overlay: Shared GameOverlay (created if not provided)
     """
-    # Import overlay system (late import to avoid circular deps)
-    from game.overlay import GameOverlay
+    # Import systems (late import to avoid circular deps)
+    from game.controls import Action, InputHandler
+    from game.overlay import GameOverlay, PauseMenu, ChoiceMenu
     from game.plot_event_bus import PlotEvent, publish
     from game.plot_state import PlotStateManager
 
     # Load existing state or create new
     plot_state = PlotStateManager.load_or_create()
 
-    # Initialize overlay
-    overlay = GameOverlay.create(guide)
+    # Initialize input handler
+    if input_handler is None:
+        input_handler = InputHandler()
+
+    # Initialize overlay (use provided or create new)
+    if overlay is None:
+        overlay = GameOverlay.create(guide)
     overlay.set_scene(scene_slug)
 
     # Screen dimensions
@@ -587,7 +595,7 @@ def run(screen, clock, guide, scene_slug, tone):
 
     # Instructions
     instructions_text = [
-        "Arrow keys: Move",
+        "WASD/Arrows: Move",
         "Right-click: Move to",
         "E: Talk to NPC",
         "Space/Click: Attack",
@@ -601,30 +609,42 @@ def run(screen, clock, guide, scene_slug, tone):
     ]
     show_instructions = False  # Off by default - narrator explains I key
 
-    # Pause menu state
-    paused = False
-    pause_menu_selection = 0  # 0 = Resume, 1 = Exit to Main
-    pause_menu_options = ["Resume Game", "Exit to Main Menu"]
+    # Shared pause menu
+    pause_menu = PauseMenu()
+    running_ref = [True]  # Mutable reference for callback
 
-    # Exit portal choice menu
-    exit_menu_active = False
-    exit_menu_selection = 0
-    exit_menu_options = ["Keep Exploring", "Move to Py Horror"]
+    def on_exit_to_menu():
+        running_ref[0] = False
+
+    pause_menu.set_default_options(on_exit=on_exit_to_menu)
+    pause_menu.on_open = lambda: (guide.stop() if guide else None, overlay.audio.stop())
+
+    # Shared exit portal choice menu
+    exit_menu = ChoiceMenu(title="The Exit Awaits")
+    level_completed_ref = [False]
+
+    def on_keep_exploring():
+        exit_menu.close()
+        game_loop.state.phase = GamePhase.LIVING_CITY
+        narrator_queue.queue_line("You choose to linger. The city welcomes you back.")
+
+    def on_move_to_next():
+        level_completed_ref[0] = True
+        running_ref[0] = False
+
+    exit_menu.add_option("Keep Exploring", on_keep_exploring)
+    exit_menu.add_option("Move to Py Horror", on_move_to_next)
 
     # Status/inventory panel
     show_status_panel = False
 
-    # Click-to-move target
-    move_target = None  # (x, y) world coordinates or None
+    # Click-to-move target (world coordinates)
+    move_target = None
 
     # Start the game loop
     game_loop.start()
 
-    running = True
-    level_completed = False
-    player_choice = "continue"  # "continue" or "next_level"
-
-    while running:
+    while running_ref[0]:
         raw_dt = clock.tick(60) / 1000.0
 
         # Update corruption entropy based on game phase
@@ -634,109 +654,113 @@ def run(screen, clock, guide, scene_slug, tone):
         # Apply time dilation (horror effect - reality stutters)
         dt = corruption.warp_time(raw_dt)
 
-        # Handle events (overlay first)
+        # Update input handler at frame start
+        input_handler.update()
+        input_handler.set_camera_offset((camera.x, camera.y))
+
+        # Handle events (overlay first, then menus, then input handler)
         events = pygame.event.get()
         events = overlay.handle_events(events)
 
         for event in events:
             if event.type == pygame.QUIT:
                 publish(PlotEvent.QUIT_CLICK)
-                running = False
+                running_ref[0] = False
+                continue
 
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    publish(PlotEvent.ESC_PRESS)
-                    # Corruption may block escape attempts (horror effect)
-                    if corruption.should_block_escape():
-                        overlay.notifications.show_glitch("No escape. Not yet.", 2.0, "center")
-                        lines = CORRUPTION_NARRATOR_LINES.get("ESCAPE_BLOCKED", [])
-                        if lines and not overlay.audio.muted:
-                            narrator_queue.queue_line(random.choice(lines))
-                        continue  # Skip normal ESC handling
-                    # Close any open menus first, then toggle pause
-                    if exit_menu_active:
-                        exit_menu_active = False
-                    elif show_status_panel:
-                        show_status_panel = False
-                    else:
-                        paused = not paused
-                        pause_menu_selection = 0
-                        if paused and guide:
-                            guide.stop()
-                            overlay.audio.stop()
+            # Debug: log mouse events
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                print(f"DEBUG: Mouse button {event.button} down at {event.pos}")
 
-                # Exit portal choice menu controls
-                elif exit_menu_active:
-                    if event.key == pygame.K_UP or event.key == pygame.K_LEFT:
-                        exit_menu_selection = (exit_menu_selection - 1) % len(exit_menu_options)
-                    elif event.key == pygame.K_DOWN or event.key == pygame.K_RIGHT:
-                        exit_menu_selection = (exit_menu_selection + 1) % len(exit_menu_options)
-                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        if exit_menu_selection == 0:  # Keep Exploring
-                            exit_menu_active = False
-                            game_loop.state.phase = GamePhase.LIVING_CITY  # Reset to exploration
-                            narrator_queue.queue_line("You choose to linger. The city welcomes you back.")
-                        elif exit_menu_selection == 1:  # Move to Py Horror
-                            level_completed = True
-                            player_choice = "next_level"
-                            running = False
+            # Let menus handle events first
+            if exit_menu.is_open:
+                if exit_menu.handle_event(event):
+                    continue
+            if pause_menu.is_open:
+                if pause_menu.handle_event(event):
                     continue
 
-                # Pause menu controls
-                elif paused:
-                    if event.key == pygame.K_UP:
-                        pause_menu_selection = (pause_menu_selection - 1) % len(pause_menu_options)
-                    elif event.key == pygame.K_DOWN:
-                        pause_menu_selection = (pause_menu_selection + 1) % len(pause_menu_options)
-                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
-                        if pause_menu_selection == 0:  # Resume
-                            paused = False
-                        elif pause_menu_selection == 1:  # Exit to Main
-                            running = False
-                    continue
+            # Pass to input handler
+            handled = input_handler.handle_event(event)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                print(f"DEBUG: InputHandler handled: {handled}")
 
-                elif event.key == pygame.K_g:
+        # Handle pause (ESC)
+        if input_handler.just_pressed(Action.PAUSE):
+            publish(PlotEvent.ESC_PRESS)
+            # Corruption may block escape attempts (horror effect)
+            if corruption.should_block_escape():
+                overlay.notifications.show_glitch("No escape. Not yet.", 2.0, "center")
+                lines = CORRUPTION_NARRATOR_LINES.get("ESCAPE_BLOCKED", [])
+                if lines and not overlay.audio.muted:
+                    narrator_queue.queue_line(random.choice(lines))
+            elif exit_menu.is_open:
+                exit_menu.close()
+            elif show_status_panel:
+                show_status_panel = False
+            elif pause_menu.is_open:
+                pause_menu.close()
+            else:
+                pause_menu.open()
+
+        # Skip game input when menus are open
+        if pause_menu.is_open or exit_menu.is_open:
+            pass  # Skip to rendering
+        else:
+            # Game-specific key actions (using pygame directly for non-standard keys)
+            keys = pygame.key.get_pressed()
+
+            if keys[pygame.K_g]:
+                if not hasattr(run, '_g_pressed') or not run._g_pressed:
                     player.change_alignment("good")
                     game_loop.on_player_aligned("good")
+                    run._g_pressed = True
+            else:
+                run._g_pressed = False
 
-                elif event.key == pygame.K_n:
+            if keys[pygame.K_n] and not keys[pygame.K_LCTRL] and not keys[pygame.K_RCTRL]:
+                if not hasattr(run, '_n_pressed') or not run._n_pressed:
                     player.change_alignment("neutral")
                     game_loop.on_player_aligned("neutral")
                     narrator_queue.queue_line("I see you can't decide. How typical.")
+                    run._n_pressed = True
+            else:
+                run._n_pressed = False
 
-                elif event.key == pygame.K_i:
-                    show_instructions = not show_instructions
+            # Instructions toggle
+            if input_handler.just_pressed(Action.INSTRUCTIONS):
+                show_instructions = not show_instructions
 
-                elif event.key == pygame.K_m:
-                    overlay.audio.muted = not overlay.audio.muted
-                    if overlay.audio.muted:
-                        overlay.audio.stop()
-                        narrator_queue.clear()
-                        print("Narrator muted")
-                    else:
-                        print("Narrator unmuted")
-
-                elif event.key == pygame.K_TAB:
-                    # Toggle status panel (inventory, faction, quest)
-                    show_status_panel = not show_status_panel
-
-                elif event.key == pygame.K_BACKQUOTE:  # ` key - skip phase
-                    current = game_loop.state.phase
-                    if current == GamePhase.TUTORIAL:
-                        game_loop._transition_to_phase(GamePhase.LIVING_CITY)
-                    elif current == GamePhase.LIVING_CITY:
-                        game_loop._transition_to_phase(GamePhase.SOMETHING_WRONG)
-                    elif current == GamePhase.SOMETHING_WRONG:
-                        for anomaly in game_loop.state.anomalies[:5]:
-                            anomaly.discovered = True
-                        game_loop.state.anomalies_discovered = 5
-                        game_loop._transition_to_phase(GamePhase.EXIT_SEARCH)
-                    elif current == GamePhase.EXIT_SEARCH:
-                        game_loop._transition_to_phase(GamePhase.COMPLETED)
+            # Mute toggle
+            if input_handler.just_pressed(Action.MUTE):
+                overlay.audio.muted = not overlay.audio.muted
+                if overlay.audio.muted:
+                    overlay.audio.stop()
                     narrator_queue.clear()
 
-                elif event.key == pygame.K_h:
-                    # Help police with nearby crime
+            # Status panel toggle
+            if input_handler.just_pressed(Action.STATUS):
+                show_status_panel = not show_status_panel
+
+            # Dev: Skip phase
+            if input_handler.just_pressed(Action.SKIP_PHASE):
+                current = game_loop.state.phase
+                if current == GamePhase.TUTORIAL:
+                    game_loop._transition_to_phase(GamePhase.LIVING_CITY)
+                elif current == GamePhase.LIVING_CITY:
+                    game_loop._transition_to_phase(GamePhase.SOMETHING_WRONG)
+                elif current == GamePhase.SOMETHING_WRONG:
+                    for anomaly in game_loop.state.anomalies[:5]:
+                        anomaly.discovered = True
+                    game_loop.state.anomalies_discovered = 5
+                    game_loop._transition_to_phase(GamePhase.EXIT_SEARCH)
+                elif current == GamePhase.EXIT_SEARCH:
+                    game_loop._transition_to_phase(GamePhase.COMPLETED)
+                narrator_queue.clear()
+
+            # Help police (H key)
+            if keys[pygame.K_h]:
+                if not hasattr(run, '_h_pressed') or not run._h_pressed:
                     crime = crime_sim.player_intervene(player.x, player.y, True)
                     if crime:
                         game_loop.on_player_intervention(True)
@@ -748,9 +772,13 @@ def run(screen, clock, guide, scene_slug, tone):
                                 if math.sqrt(dx * dx + dy * dy) < 200:
                                     npc.increase_trust(15)
                         overlay.notifications.show_glitch("They notice your help. Trust grows.", 2.0, "top_right")
+                    run._h_pressed = True
+            else:
+                run._h_pressed = False
 
-                elif event.key == pygame.K_j:
-                    # Join crime - loses karma and trust
+            # Join crime (J key)
+            if keys[pygame.K_j]:
+                if not hasattr(run, '_j_pressed') or not run._j_pressed:
                     crime = crime_sim.player_intervene(player.x, player.y, False)
                     if crime:
                         game_loop.on_player_intervention(False)
@@ -761,57 +789,49 @@ def run(screen, clock, guide, scene_slug, tone):
                             if math.sqrt(dx * dx + dy * dy) < 200:
                                 npc.trust = max(-100, npc.trust - 20)
                         overlay.notifications.show_glitch("They saw what you did. They won't forget.", 2.0, "top_right")
+                    run._j_pressed = True
+            else:
+                run._j_pressed = False
 
-                elif event.key == pygame.K_e:
-                    # E key - NPC interaction OR building entry
-                    # First check for special building nearby
-                    nearby_building = special_buildings.get_building_near(player.x, player.y)
-                    if nearby_building:
-                        # Enter the building
-                        building_type = nearby_building.building_type.value
-                        overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
-                        lines = BUILDING_NARRATOR_LINES.get(building_type, [])
-                        if lines and not overlay.audio.muted:
-                            narrator_queue.queue_line(random.choice(lines))
-                        # TODO: Building interior system
-                    else:
-                        # Try NPC interaction
-                        interacted = player.interact(all_npcs)
-                        if interacted:
-                            npc_id = f"npc_{id(interacted)}"
-                            situation = _get_situation(interacted, player, plot_state)
+            # Interact (E key) - NPC or building
+            if input_handler.just_pressed(Action.INTERACT):
+                nearby_building = special_buildings.get_building_near(player.x, player.y)
+                if nearby_building:
+                    building_type = nearby_building.building_type.value
+                    overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
+                    lines = BUILDING_NARRATOR_LINES.get(building_type, [])
+                    if lines and not overlay.audio.muted:
+                        narrator_queue.queue_line(random.choice(lines))
+                else:
+                    interacted = player.interact(all_npcs)
+                    if interacted:
+                        npc_id = f"npc_{id(interacted)}"
+                        situation = _get_situation(interacted, player, plot_state)
+                        if situation == "reveal_secret":
+                            interacted.secret_revealed = True
+                        overlay.show_npc_dialogue(npc_id, "", situation)
+                        dialog_timer = 4.0
+                        talking_npc = interacted
+                        idle_timer = 0.0
+                        game_loop.on_player_talked(interacted.type)
 
-                            # Mark secret as revealed if NPC shares it
-                            if situation == "reveal_secret":
-                                interacted.secret_revealed = True
+            # Attack (Space or Left-click)
+            if input_handler.just_pressed(Action.ATTACK) and not show_status_panel:
+                print("DEBUG: Attack triggered!")
+                _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
 
-                            overlay.show_npc_dialogue(npc_id, "", situation)
-                            dialog_timer = 4.0
-                            talking_npc = interacted
-                            idle_timer = 0.0
-                            game_loop.on_player_talked(interacted.type)
+            # Click-to-move (Right-click)
+            click_target = input_handler.get_click_target()
+            if click_target:
+                # Wraparound world coordinates
+                world_x = click_target[0] % city_config.world_width
+                world_y = click_target[1] % city_config.world_height
+                move_target = (world_x, world_y)
+                print(f"DEBUG: Click-to-move target set: {move_target}")
+                input_handler.clear_click_target()
 
-                elif event.key == pygame.K_SPACE:
-                    # Space - Attack action
-                    _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
-
-            # Mouse button events
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                mouse_x, mouse_y = event.pos
-                if event.button == 3:  # Right-click - move to location
-                    # Convert screen pos to world pos
-                    world_x = mouse_x + camera.x
-                    world_y = mouse_y + camera.y
-                    # Wraparound
-                    world_x = world_x % city_config.world_width
-                    world_y = world_y % city_config.world_height
-                    move_target = (world_x, world_y)
-                elif event.button == 1:  # Left-click - attack
-                    if not exit_menu_active and not paused and not show_status_panel:
-                        _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
-
-        # Skip game updates when paused or in exit menu
-        if not paused:
+        # Skip game updates when menus are open
+        if not pause_menu.is_open and not exit_menu.is_open:
             # Track idle time
             if (player.x, player.y) == last_player_pos:
                 idle_timer += dt
@@ -824,10 +844,8 @@ def run(screen, clock, guide, scene_slug, tone):
                 player_moving = True
                 last_player_pos = (player.x, player.y)
 
-            # Player movement - arrow keys OR click-to-move
-            keys = pygame.key.get_pressed()
-            dx = keys[pygame.K_RIGHT] - keys[pygame.K_LEFT]
-            dy = keys[pygame.K_DOWN] - keys[pygame.K_UP]
+            # Player movement via InputHandler (WASD and arrow keys)
+            dx, dy = input_handler.get_movement()
 
             # Click-to-move takes priority if active and no keyboard input
             if move_target and dx == 0 and dy == 0:
@@ -872,9 +890,8 @@ def run(screen, clock, guide, scene_slug, tone):
             game_loop.update(dt, player.x, player.y, player_moving)
 
             # Check for level completion - show exit menu instead of auto-exiting
-            if game_loop.is_complete() and not exit_menu_active:
-                exit_menu_active = True
-                exit_menu_selection = 0
+            if game_loop.is_complete() and not exit_menu.is_open:
+                exit_menu.open()
                 if guide:
                     guide.stop()
                 narrator_queue.queue_line("A choice presents itself. Stay, or move forward?", priority=True)
@@ -1204,13 +1221,9 @@ def run(screen, clock, guide, scene_slug, tone):
         if show_status_panel:
             _draw_status_panel(screen, player, game_loop, font)
 
-        # Draw pause menu if paused
-        if paused:
-            _draw_pause_menu(screen, pause_menu_options, pause_menu_selection, font)
-
-        # Draw exit choice menu
-        if exit_menu_active:
-            _draw_exit_menu(screen, exit_menu_options, exit_menu_selection, font)
+        # Draw shared menus
+        pause_menu.draw(screen)
+        exit_menu.draw(screen)
 
         # Draw move target indicator
         if move_target:
@@ -1237,7 +1250,7 @@ def run(screen, clock, guide, scene_slug, tone):
     print(f"Game state saved. Stage: {plot_state.get_stage().value}, Awareness: {plot_state.get_awareness():.2f}")
 
     # Return completion status
-    return level_completed
+    return level_completed_ref[0]
 
 
 def _draw_minimap(screen: pygame.Surface, screen_width: int,
