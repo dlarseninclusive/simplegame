@@ -370,6 +370,15 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     from game.plot_event_bus import PlotEvent, publish
     from game.plot_state import PlotStateManager
 
+    # Re-acquire window focus and mouse (fixes in-process loading on Linux)
+    # This is needed because when running in-process from the launcher,
+    # the display surface may have lost input focus
+    width, height = screen.get_width(), screen.get_height()
+    screen = pygame.display.set_mode((width, height))  # Re-set same size to refresh
+    pygame.mouse.set_visible(True)
+    pygame.event.set_grab(False)
+    pygame.event.pump()  # Process any pending events to establish focus
+
     # Load existing state or create new
     plot_state = PlotStateManager.load_or_create()
 
@@ -1707,10 +1716,20 @@ if __name__ == "__main__":
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
+    # Re-initialize pygame completely (fixes subprocess focus issues on Linux)
+    pygame.quit()
     pygame.init()
+
     screen = pygame.display.set_mode((1280, 720))
     pygame.display.set_caption("Py City - The Tutorial")
     clock = pygame.time.Clock()
+
+    # Ensure mouse works
+    pygame.mouse.set_visible(True)
+    pygame.event.set_grab(False)
+
+    # Pump events to ensure window is ready
+    pygame.event.pump()
 
     # Initialize Guide
     from game.guide_voice import Guide
