@@ -668,10 +668,6 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                 running_ref[0] = False
                 continue
 
-            # Debug: log mouse events
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                print(f"DEBUG: Mouse button {event.button} down at {event.pos}")
-
             # Let menus handle events first
             if exit_menu.is_open:
                 if exit_menu.handle_event(event):
@@ -681,9 +677,7 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                     continue
 
             # Pass to input handler
-            handled = input_handler.handle_event(event)
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                print(f"DEBUG: InputHandler handled: {handled}")
+            input_handler.handle_event(event)
 
         # Handle pause (ESC)
         if input_handler.just_pressed(Action.PAUSE):
@@ -817,7 +811,6 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
             # Attack (Space or Left-click)
             if input_handler.just_pressed(Action.ATTACK) and not show_status_panel:
-                print("DEBUG: Attack triggered!")
                 _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
 
             # Click-to-move (Right-click)
@@ -827,7 +820,6 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                 world_x = click_target[0] % city_config.world_width
                 world_y = click_target[1] % city_config.world_height
                 move_target = (world_x, world_y)
-                print(f"DEBUG: Click-to-move target set: {move_target}")
                 input_handler.clear_click_target()
 
         # Skip game updates when menus are open
