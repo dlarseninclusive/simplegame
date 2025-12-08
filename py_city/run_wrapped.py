@@ -812,7 +812,7 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                         situation = _get_situation(interacted, player, plot_state)
                         if situation == "reveal_secret":
                             interacted.secret_revealed = True
-                        overlay.show_npc_dialogue(npc_id, "", situation)
+                        overlay.show_npc_dialogue_with_guide(npc_id, "", situation)
                         dialog_timer = 4.0
                         talking_npc = interacted
                         idle_timer = 0.0
