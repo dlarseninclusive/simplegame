@@ -47,6 +47,7 @@ class Vehicle:
     waiting: bool = False
     wait_timer: float = 0.0
     honking: bool = False
+    parked: bool = False  # Parked cars don't move
 
     # Path following
     path: List[Tuple[float, float]] = field(default_factory=list)
@@ -107,6 +108,10 @@ class Vehicle:
 
     def update(self, dt: float, road_network: 'RoadNetwork' = None):
         """Update vehicle position."""
+        # Parked cars don't move
+        if self.parked:
+            return
+
         if self.waiting:
             self.wait_timer -= dt
             if self.wait_timer <= 0:
@@ -279,9 +284,11 @@ class VehicleManager:
         self.road_network = road_network
         self.vehicles: List[Vehicle] = []
         self.max_vehicles = 15
+        self.max_parked = 20  # Additional parked vehicles
 
     def spawn_vehicles(self, road_segments: List[Tuple[int, int, int, int]]):
         """Spawn initial vehicles on road segments."""
+        # Spawn moving vehicles
         for _ in range(self.max_vehicles):
             if road_segments:
                 # Pick random road segment
@@ -312,6 +319,50 @@ class VehicleManager:
                     vehicle.path = self.road_network.get_random_path(x, y)
                     vehicle.path_index = 0
 
+                self.vehicles.append(vehicle)
+
+        # Spawn parked vehicles along road edges
+        self._spawn_parked_vehicles(road_segments)
+
+    def _spawn_parked_vehicles(self, road_segments: List[Tuple[int, int, int, int]]):
+        """Spawn parked cars along the sides of roads."""
+        for _ in range(self.max_parked):
+            if road_segments:
+                # Pick random road segment
+                x1, y1, x2, y2 = random.choice(road_segments)
+                t = random.random()
+
+                # Position along the road
+                road_x = x1 + t * (x2 - x1)
+                road_y = y1 + t * (y2 - y1)
+
+                # Determine road direction and offset to the side
+                dx, dy = x2 - x1, y2 - y1
+                length = math.sqrt(dx * dx + dy * dy)
+                if length > 0:
+                    # Perpendicular offset (park on side of road)
+                    perp_x, perp_y = -dy / length, dx / length
+                    # Randomly choose left or right side, offset by ~20 pixels
+                    side = random.choice([-1, 1])
+                    offset = 18 + random.randint(-3, 3)
+                    x = road_x + perp_x * offset * side
+                    y = road_y + perp_y * offset * side
+
+                    # Direction aligned with road (parked cars face along road)
+                    direction = (dx / length, dy / length)
+                    if random.random() < 0.5:  # Sometimes face opposite direction
+                        direction = (-direction[0], -direction[1])
+                else:
+                    x, y = road_x, road_y
+                    direction = (1, 0)
+
+                # Only cars and trucks park (no buses, taxis, police, ambulances)
+                vtype = random.choices(
+                    [VehicleType.CAR, VehicleType.TRUCK],
+                    weights=[85, 15]
+                )[0]
+
+                vehicle = Vehicle(x=x, y=y, vehicle_type=vtype, direction=direction, parked=True)
                 self.vehicles.append(vehicle)
 
     def update(self, dt: float):
