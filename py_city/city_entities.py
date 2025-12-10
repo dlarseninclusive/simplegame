@@ -212,12 +212,22 @@ class Vehicle:
 
         # Type-specific details
         if self.vehicle_type == VehicleType.POLICE_CAR:
-            # Light bar on top
+            # Light bar on top - flashing red and blue
             light_time = pygame.time.get_ticks()
-            left_color = (255, 0, 0) if (light_time // 150) % 2 == 0 else (100, 0, 0)
-            right_color = (0, 0, 255) if (light_time // 150) % 2 == 1 else (0, 0, 100)
-            pygame.draw.rect(screen, left_color, (cx - 8, cy - 3, 6, 6), border_radius=1)
-            pygame.draw.rect(screen, right_color, (cx + 2, cy - 3, 6, 6), border_radius=1)
+            flash_phase = (light_time // 150) % 2
+            # Brighter colors for visibility
+            red_color = (255, 50, 50) if flash_phase == 0 else (150, 30, 30)
+            blue_color = (50, 100, 255) if flash_phase == 1 else (30, 60, 150)
+
+            # Position lights based on orientation
+            if horizontal:
+                # Lights side by side on roof
+                pygame.draw.rect(screen, red_color, (cx - 7, cy - 4, 6, 5), border_radius=1)
+                pygame.draw.rect(screen, blue_color, (cx + 1, cy - 4, 6, 5), border_radius=1)
+            else:
+                # Lights stacked vertically when car is vertical
+                pygame.draw.rect(screen, red_color, (cx - 4, cy - 7, 5, 6), border_radius=1)
+                pygame.draw.rect(screen, blue_color, (cx - 4, cy + 1, 5, 6), border_radius=1)
 
         elif self.vehicle_type == VehicleType.AMBULANCE:
             # Red cross on white
