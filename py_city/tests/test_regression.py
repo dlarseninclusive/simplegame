@@ -7,6 +7,8 @@ Tests core systems without requiring pygame display:
 - Building generation
 - Crime simulation
 - Game loop phases
+- Building interiors
+- Quest system
 """
 
 import sys
@@ -372,6 +374,231 @@ class TestNarratorQueue(unittest.TestCase):
         queue.queue_line("Line 2")
         queue.queue_line("Line 3")  # Should drop oldest
         self.assertLessEqual(len(queue.queue), 2)
+
+
+class TestBuildingInteriors(unittest.TestCase):
+    """Tests for building interior system."""
+
+    def test_interior_object_creation(self):
+        """Test InteriorObject can be created."""
+        from interiors import InteriorObject
+        obj = InteriorObject(
+            name="Test Dresser",
+            position=(50, 50),
+            size=(40, 40),
+            searchable=True,
+        )
+        self.assertEqual(obj.name, "Test Dresser")
+        self.assertTrue(obj.searchable)
+        self.assertFalse(obj.searched)
+
+    def test_interior_object_get_rect(self):
+        """Test InteriorObject rect calculation."""
+        from interiors import InteriorObject
+        obj = InteriorObject(name="Test", position=(100, 200), size=(50, 60))
+        rect = obj.get_rect(offset_x=10, offset_y=20)
+        self.assertEqual(rect.x, 110)
+        self.assertEqual(rect.y, 220)
+        self.assertEqual(rect.width, 50)
+        self.assertEqual(rect.height, 60)
+
+    def test_building_interior_generation(self):
+        """Test BuildingInterior generates objects."""
+        from interiors import BuildingInterior
+        interior = BuildingInterior(building_type="house", seed=42)
+        self.assertGreater(len(interior.objects), 0)
+        self.assertEqual(interior.width, 400)
+        self.assertEqual(interior.height, 300)
+
+    def test_building_interior_has_door(self):
+        """Test BuildingInterior always has exit door."""
+        from interiors import BuildingInterior
+        interior = BuildingInterior(building_type="hospital", seed=123)
+        door = interior.get_door()
+        self.assertIsNotNone(door)
+        self.assertTrue(door.is_door)
+        self.assertFalse(door.searchable)
+
+    def test_building_interior_search_object(self):
+        """Test searching objects returns correct results."""
+        from interiors import BuildingInterior
+        interior = BuildingInterior(building_type="house", seed=1)
+
+        # Find a searchable object
+        searchable = None
+        for obj in interior.objects:
+            if obj.searchable and not obj.is_door:
+                searchable = obj
+                break
+
+        if searchable:
+            message, item = interior.search_object(searchable, horror_stage="early")
+            self.assertIsInstance(message, str)
+            self.assertTrue(searchable.searched)
+
+            # Second search should say already searched
+            message2, item2 = interior.search_object(searchable)
+            self.assertIn("already", message2.lower())
+
+    def test_building_interior_horror_text(self):
+        """Test horror text appears in late stages."""
+        from interiors import BuildingInterior
+        interior = BuildingInterior(building_type="house", seed=999)
+
+        # Find object with horror_text
+        horror_obj = None
+        for obj in interior.objects:
+            if obj.horror_text and obj.searchable:
+                horror_obj = obj
+                break
+
+        if horror_obj:
+            message, _ = interior.search_object(horror_obj, horror_stage="late")
+            self.assertIn(horror_obj.horror_text, message)
+
+    def test_interior_manager_caching(self):
+        """Test InteriorManager caches interiors."""
+        from interiors import InteriorManager
+        manager = InteriorManager()
+
+        interior1 = manager.get_interior(building_id=1, building_type="house")
+        interior2 = manager.get_interior(building_id=1, building_type="house")
+
+        self.assertIs(interior1, interior2)  # Same object
+
+        interior3 = manager.get_interior(building_id=2, building_type="bar")
+        self.assertIsNot(interior1, interior3)  # Different building
+
+    def test_building_types_have_objects(self):
+        """Test all building types generate valid interiors."""
+        from interiors import BuildingInterior, BUILDING_OBJECTS
+        for building_type in BUILDING_OBJECTS.keys():
+            interior = BuildingInterior(building_type=building_type, seed=100)
+            self.assertGreater(len(interior.objects), 0,
+                             f"Building type {building_type} has no objects")
+
+
+class TestQuestSystem(unittest.TestCase):
+    """Tests for quest system."""
+
+    def test_quest_types_exist(self):
+        """Test all quest types are defined."""
+        from quest_system import QuestType
+        types = list(QuestType)
+        self.assertIn(QuestType.TUTORIAL, types)
+        self.assertIn(QuestType.EXPLORATION, types)
+        self.assertIn(QuestType.SOCIAL, types)
+        self.assertIn(QuestType.INVESTIGATION, types)
+        self.assertIn(QuestType.MORAL, types)
+        self.assertIn(QuestType.CRIME_NOIR, types)
+
+    def test_quest_status_enum(self):
+        """Test QuestStatus enum."""
+        from quest_system import QuestStatus
+        statuses = list(QuestStatus)
+        self.assertIn(QuestStatus.LOCKED, statuses)
+        self.assertIn(QuestStatus.AVAILABLE, statuses)
+        self.assertIn(QuestStatus.ACTIVE, statuses)
+        self.assertIn(QuestStatus.COMPLETED, statuses)
+
+    def test_quest_progress_tracking(self):
+        """Test Quest tracks progress."""
+        from quest_system import Quest, QuestType, QuestStatus
+        quest = Quest(
+            id="test_quest",
+            title="Test Quest",
+            description="A test",
+            quest_type=QuestType.TUTORIAL,
+            objective="test_event",
+            target_count=3,
+        )
+        quest.status = QuestStatus.ACTIVE
+
+        self.assertEqual(quest.get_progress_text(), "0/3")
+
+        quest.check_objective("test_event")
+        self.assertEqual(quest.current_count, 1)
+        self.assertEqual(quest.get_progress_text(), "1/3")
+
+    def test_quest_completion(self):
+        """Test quest completes when target reached."""
+        from quest_system import Quest, QuestType, QuestStatus
+        quest = Quest(
+            id="test",
+            title="Test",
+            description="",
+            quest_type=QuestType.TUTORIAL,
+            objective="finish",
+            target_count=2,
+        )
+        quest.status = QuestStatus.ACTIVE
+
+        completed = quest.check_objective("finish")
+        self.assertFalse(completed)
+
+        completed = quest.check_objective("finish")
+        self.assertTrue(completed)
+        self.assertEqual(quest.status, QuestStatus.COMPLETED)
+
+    def test_quest_manager_init(self):
+        """Test QuestManager initialization."""
+        from quest_system import QuestManager, ALL_QUESTS
+        manager = QuestManager()
+        self.assertIsNotNone(manager.quests)
+        self.assertEqual(len(manager.quests), len(ALL_QUESTS))
+
+    def test_quest_manager_start_quest(self):
+        """Test starting a quest."""
+        from quest_system import QuestManager, QuestStatus
+        manager = QuestManager()
+
+        # Make first tutorial quest available
+        tutorial_id = "tutorial_move"
+        if tutorial_id in manager.quests:
+            manager.quests[tutorial_id].status = QuestStatus.AVAILABLE
+
+            quest = manager.start_quest(tutorial_id)
+            self.assertIsNotNone(quest)
+            self.assertEqual(quest.status, QuestStatus.ACTIVE)
+            self.assertEqual(manager.active_quest_id, tutorial_id)
+
+    def test_quest_manager_on_event(self):
+        """Test event processing advances quests."""
+        from quest_system import QuestManager, QuestStatus
+        manager = QuestManager()
+
+        # Start movement tutorial
+        tutorial_id = "tutorial_move"
+        if tutorial_id in manager.quests:
+            manager.quests[tutorial_id].status = QuestStatus.AVAILABLE
+            manager.start_quest(tutorial_id)
+
+            # Trigger movement events
+            for _ in range(20):
+                result = manager.on_event("player_moved")
+                if result:
+                    break
+
+            # Should complete after 20 moves
+            self.assertIn(tutorial_id, manager.completed_quests)
+
+    def test_all_quests_defined(self):
+        """Test essential quests exist."""
+        from quest_system import ALL_QUESTS
+        quest_ids = [q.id for q in ALL_QUESTS]
+
+        # Check some key quests exist
+        self.assertIn("tutorial_move", quest_ids)
+        self.assertIn("tutorial_talk", quest_ids)
+        self.assertIn("meet_neighbors", quest_ids)
+        self.assertIn("find_hospital", quest_ids)
+
+    def test_quest_horror_hints(self):
+        """Test quests have horror hints."""
+        from quest_system import ALL_QUESTS
+        # At least some quests should have horror hints
+        hints_found = sum(1 for q in ALL_QUESTS if q.horror_hint)
+        self.assertGreater(hints_found, 0, "No quests have horror hints")
 
 
 if __name__ == '__main__':

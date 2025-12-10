@@ -865,6 +865,28 @@ class SpecialBuildingManager:
                 return building
         return None
 
+    def get_building_by_type(self, building_type: SpecialBuildingType) -> Optional[SpecialBuilding]:
+        """Get a special building by its type."""
+        for building in self.buildings:
+            if building.building_type == building_type:
+                return building
+        return None
+
+    @property
+    def jail(self) -> Optional[SpecialBuilding]:
+        """Get the jail building."""
+        return self.get_building_by_type(SpecialBuildingType.JAIL)
+
+    @property
+    def police_station(self) -> Optional[SpecialBuilding]:
+        """Get the police station."""
+        return self.get_building_by_type(SpecialBuildingType.POLICE_STATION)
+
+    @property
+    def hospital(self) -> Optional[SpecialBuilding]:
+        """Get the hospital."""
+        return self.get_building_by_type(SpecialBuildingType.HOSPITAL)
+
     def draw(self, screen: pygame.Surface, camera: 'Camera', player_x: float, player_y: float):
         """Draw all special buildings."""
         for building in self.buildings:

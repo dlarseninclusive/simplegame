@@ -25,6 +25,7 @@ import math
 import os
 import random
 import sys
+import time
 
 import pygame
 
@@ -41,6 +42,7 @@ from city_entities import (
     VehicleManager, AnimalManager, SpecialBuildingManager,
     InvestigationManager, RoadNetwork, SpecialBuildingType
 )
+from interiors import BuildingInterior, InteriorManager, InteriorObject
 
 # NPC type to archetype mapping
 NPC_TYPE_TO_ARCHETYPE = {
@@ -123,6 +125,25 @@ INVESTIGATION_NARRATOR_LINES = {
     ],
 }
 
+# Interior search narrator lines
+INTERIOR_NARRATOR_LINES = {
+    "item_found": [
+        "You found something. Something that was meant to be found.",
+        "Evidence of... what, exactly? Keep looking.",
+        "The city wants you to know. Ask yourself why.",
+    ],
+    "search_empty": [
+        "Nothing. Or nothing you were meant to find.",
+        "Empty. Like so many things here.",
+        "Keep searching. The answers are somewhere.",
+    ],
+    "horror_discovery": [
+        "Some things are better left unfound.",
+        "You weren't supposed to see that.",
+        "The city remembers what you've found. It always remembers.",
+    ],
+}
+
 # Crime event narrator lines
 CRIME_NARRATOR_LINES = {
     "mugging_started": [
@@ -149,6 +170,51 @@ CRIME_NARRATOR_LINES = {
         "Gone. Like they were never here.",
         "Freedom has a price. They'll pay it later.",
         "Some escape. Most don't. The math is patient.",
+    ],
+}
+
+# Violence consequences narrator lines
+VIOLENCE_NARRATOR_LINES = {
+    "police_alerted": [
+        "The authorities take notice.",
+        "Blue lights in your future.",
+        "Violence has consequences. Even here.",
+    ],
+    "pursuit_started": [
+        "They're coming for you now.",
+        "Run if you want. They always catch up.",
+        "The city protects its own.",
+    ],
+    "player_arrested": [
+        "Caught. Did you expect otherwise?",
+        "The cell awaits. Time to reflect.",
+        "Justice here is... efficient.",
+    ],
+    "jail_release": [
+        "Freedom. For now.",
+        "They're still watching you.",
+        "Some lessons stick. Will this one?",
+    ],
+    "wanted_escalation": [
+        "Your reputation precedes you now.",
+        "They're sending more. Interesting.",
+        "Violence begets violence. You're learning.",
+    ],
+    "attack_civilian": [
+        "Violence. How predictable.",
+        "The city sees everything you do.",
+        "Is this the path you choose?",
+        "They won't forget this.",
+    ],
+    "attack_police": [
+        "Attacking the law? Bold.",
+        "Now they take it personally.",
+        "That was unwise.",
+    ],
+    "attack_criminal": [
+        "Vigilante justice? Interesting choice.",
+        "Fighting crime with crime.",
+        "The city notes your methods.",
     ],
 }
 
@@ -602,6 +668,22 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     last_player_pos = (player.x, player.y)
     player_moving = False
 
+    # Building interior state
+    interior_manager = InteriorManager()
+    current_interior = None  # BuildingInterior when inside a building
+    current_building = None  # SpecialBuilding when inside
+    interior_player_pos = [200, 150]  # Player position within interior
+    interior_search_cooldown = 0.0  # Prevent rapid searching
+
+    # Police pursuit state (violence consequences)
+    player_wanted = False  # Is player being pursued by police?
+    wanted_level = 0  # 0-3: higher = more aggressive pursuit
+    pursuing_police = []  # List of police NPCs actively chasing player
+    player_in_jail = False  # Is player currently in jail?
+    jail_timer = 0.0  # Time remaining in jail
+    violence_cooldown = 0.0  # Cooldown before wanted level decays
+    total_attacks = 0  # Track total violent acts for horror escalation
+
     # Instructions
     instructions_text = [
         "WASD/Arrows: Move",
@@ -796,31 +878,103 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             else:
                 run._j_pressed = False
 
-            # Interact (E key) - NPC or building
+            # Interact (E key) - NPC, building entry, interior search, or door exit
             if input_handler.just_pressed(Action.INTERACT):
-                nearby_building = special_buildings.get_building_near(player.x, player.y)
-                if nearby_building:
-                    building_type = nearby_building.building_type.value
-                    overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
-                    lines = BUILDING_NARRATOR_LINES.get(building_type, [])
-                    if lines and not overlay.audio.muted:
-                        narrator_queue.queue_line(random.choice(lines))
+                if current_interior is not None:
+                    # Inside a building - check for door first, then search nearby object
+                    if interior_search_cooldown <= 0:
+                        nearby_obj = current_interior.get_nearby_object(
+                            interior_player_pos[0], interior_player_pos[1], radius=60
+                        )
+                        if nearby_obj and nearby_obj.is_door:
+                            # Exit through door
+                            overlay.notifications.show_glitch("You leave the building.", 1.5, "center")
+                            current_interior = None
+                            current_building = None
+                        elif nearby_obj and nearby_obj.searchable and not nearby_obj.searched:
+                            # Search the object
+                            horror_stage = plot_state.get_stage().value
+                            message, item_id = current_interior.search_object(nearby_obj, horror_stage)
+
+                            # Show search result
+                            overlay.notifications.show_glitch(message, 4.0, "center")
+
+                            if item_id:
+                                # Found an item - add to inventory
+                                from game.inventory import get_item
+                                item = get_item(item_id)
+                                if item and plot_state.inventory.add(item):
+                                    overlay.notifications.show_glitch(
+                                        f"Found: {item.name}", 3.0, "top_right"
+                                    )
+                                    lines = INTERIOR_NARRATOR_LINES.get("item_found", [])
+                                    if lines and not overlay.audio.muted:
+                                        narrator_queue.queue_line(random.choice(lines))
+                                    # Save state with new item
+                                    plot_state.save()
+                            else:
+                                # Empty search
+                                if horror_stage in ("late", "finale") and nearby_obj.horror_text:
+                                    lines = INTERIOR_NARRATOR_LINES.get("horror_discovery", [])
+                                else:
+                                    lines = INTERIOR_NARRATOR_LINES.get("search_empty", [])
+                                if lines and not overlay.audio.muted and random.random() < 0.3:
+                                    narrator_queue.queue_line(random.choice(lines))
+
+                            interior_search_cooldown = 0.5  # Prevent spam
+                        elif nearby_obj and nearby_obj.searched:
+                            overlay.notifications.show_glitch("Already searched.", 1.0, "center")
                 else:
-                    interacted = player.interact(all_npcs)
-                    if interacted:
-                        npc_id = f"npc_{id(interacted)}"
-                        situation = _get_situation(interacted, player, plot_state)
-                        if situation == "reveal_secret":
-                            interacted.secret_revealed = True
-                        overlay.show_npc_dialogue_with_guide(npc_id, "", situation)
-                        dialog_timer = 4.0
-                        talking_npc = interacted
-                        idle_timer = 0.0
-                        game_loop.on_player_talked(interacted.type)
+                    # Outside - check for building entry or NPC interaction
+                    nearby_building = special_buildings.get_building_near(player.x, player.y)
+                    if nearby_building:
+                        # Enter building interior
+                        building_type = nearby_building.building_type.value
+                        current_building = nearby_building
+                        current_interior = interior_manager.get_interior(
+                            id(nearby_building), building_type
+                        )
+                        interior_player_pos[0] = current_interior.width // 2
+                        interior_player_pos[1] = current_interior.height // 2
+
+                        overlay.notifications.show_glitch(f"Entering {nearby_building.name}...", 2.0, "center")
+                        lines = BUILDING_NARRATOR_LINES.get(building_type, [])
+                        if lines and not overlay.audio.muted:
+                            narrator_queue.queue_line(random.choice(lines))
+                    else:
+                        # NPC interaction
+                        interacted = player.interact(all_npcs)
+                        if interacted:
+                            npc_id = f"npc_{id(interacted)}"
+                            situation = _get_situation(interacted, player, plot_state)
+                            if situation == "reveal_secret":
+                                interacted.secret_revealed = True
+                            overlay.show_npc_dialogue_with_guide(npc_id, "", situation)
+                            dialog_timer = 4.0
+                            talking_npc = interacted
+                            idle_timer = 0.0
+                            game_loop.on_player_talked(interacted.type)
+
+            # Exit building backup (B key or ESC when inside - main exit is E at door)
+            if current_interior is not None:
+                if keys[pygame.K_b] or input_handler.just_pressed(Action.SECONDARY):
+                    # Quick exit (backup for E at door)
+                    overlay.notifications.show_glitch("You leave the building.", 1.5, "center")
+                    current_interior = None
+                    current_building = None
 
             # Attack (Space or Left-click)
             if input_handler.just_pressed(Action.ATTACK) and not show_status_panel:
-                _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
+                # Can't attack while in jail
+                if not player_in_jail:
+                    attack_result = _do_attack(player, all_npcs, overlay, game_loop, narrator_queue)
+                    # Handle violence consequences (police pursuit)
+                    (player_wanted, wanted_level, pursuing_police,
+                     violence_cooldown, total_attacks) = _handle_attack_consequences(
+                        attack_result, player, police, player_wanted, wanted_level,
+                        pursuing_police, violence_cooldown, total_attacks,
+                        overlay, narrator_queue
+                    )
 
             # Click-to-move (Right-click)
             click_target = input_handler.get_click_target()
@@ -833,6 +987,10 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
         # Skip game updates when menus are open
         if not pause_menu.is_open and not exit_menu.is_open:
+            # Update interior search cooldown
+            if interior_search_cooldown > 0:
+                interior_search_cooldown -= dt
+
             # Track idle time
             if (player.x, player.y) == last_player_pos:
                 idle_timer += dt
@@ -848,44 +1006,65 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             # Player movement via InputHandler (WASD and arrow keys)
             dx, dy = input_handler.get_movement()
 
-            # Click-to-move takes priority if active and no keyboard input
-            if move_target and dx == 0 and dy == 0:
-                target_x, target_y = move_target
-                # Calculate direction to target (handle wraparound)
-                diff_x = target_x - player.x
-                diff_y = target_y - player.y
-
-                # Handle wraparound - find shortest path
-                if abs(diff_x) > city_config.world_width / 2:
-                    if diff_x > 0:
-                        diff_x -= city_config.world_width
-                    else:
-                        diff_x += city_config.world_width
-                if abs(diff_y) > city_config.world_height / 2:
-                    if diff_y > 0:
-                        diff_y -= city_config.world_height
-                    else:
-                        diff_y += city_config.world_height
-
-                dist = math.sqrt(diff_x * diff_x + diff_y * diff_y)
-                if dist < 10:  # Arrived at target
-                    move_target = None
-                else:
-                    # Normalize direction
-                    dx = diff_x / dist if dist > 0 else 0
-                    dy = diff_y / dist if dist > 0 else 0
-            elif dx != 0 or dy != 0:
-                # Keyboard movement cancels click-to-move
+            # Prevent movement while in jail
+            if player_in_jail:
+                dx, dy = 0, 0
                 move_target = None
-                # Add drift when stopping (corruption effect)
-                corruption.add_movement_drift(dx, dy)
 
-            # Apply movement drift (character overshoots when entropy is high)
-            drift_x, drift_y = corruption.get_movement_drift()
-            final_dx = dx + drift_x * 0.1
-            final_dy = dy + drift_y * 0.1
+            # Handle interior vs exterior movement
+            if current_interior is not None:
+                # Interior movement - constrained to room bounds
+                move_speed = 3.0 * dt * 60
+                new_x = interior_player_pos[0] + dx * move_speed
+                new_y = interior_player_pos[1] + dy * move_speed
 
-            player.move(final_dx, final_dy, city_map, dt)
+                # Clamp to interior bounds
+                margin = 20
+                new_x = max(margin, min(current_interior.width - margin, new_x))
+                new_y = max(margin, min(current_interior.height - margin, new_y))
+
+                interior_player_pos[0] = new_x
+                interior_player_pos[1] = new_y
+            else:
+                # Normal exterior movement
+                # Click-to-move takes priority if active and no keyboard input
+                if move_target and dx == 0 and dy == 0:
+                    target_x, target_y = move_target
+                    # Calculate direction to target (handle wraparound)
+                    diff_x = target_x - player.x
+                    diff_y = target_y - player.y
+
+                    # Handle wraparound - find shortest path
+                    if abs(diff_x) > city_config.world_width / 2:
+                        if diff_x > 0:
+                            diff_x -= city_config.world_width
+                        else:
+                            diff_x += city_config.world_width
+                    if abs(diff_y) > city_config.world_height / 2:
+                        if diff_y > 0:
+                            diff_y -= city_config.world_height
+                        else:
+                            diff_y += city_config.world_height
+
+                    dist = math.sqrt(diff_x * diff_x + diff_y * diff_y)
+                    if dist < 10:  # Arrived at target
+                        move_target = None
+                    else:
+                        # Normalize direction
+                        dx = diff_x / dist if dist > 0 else 0
+                        dy = diff_y / dist if dist > 0 else 0
+                elif dx != 0 or dy != 0:
+                    # Keyboard movement cancels click-to-move
+                    move_target = None
+                    # Add drift when stopping (corruption effect)
+                    corruption.add_movement_drift(dx, dy)
+
+                # Apply movement drift (character overshoots when entropy is high)
+                drift_x, drift_y = corruption.get_movement_drift()
+                final_dx = dx + drift_x * 0.1
+                final_dy = dy + drift_y * 0.1
+
+                player.move(final_dx, final_dy, city_map, dt)
 
             # Update game loop (tutorial, phases, anomalies)
             game_loop.update(dt, player.x, player.y, player_moving)
@@ -911,6 +1090,14 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                         lines = CRIME_NARRATOR_LINES.get(event, [])
                         if lines:
                             narrator_queue.queue_line(random.choice(lines))
+
+            # Update police pursuit system (violence consequences)
+            (player_wanted, wanted_level, pursuing_police,
+             player_in_jail, jail_timer, violence_cooldown) = _update_police_pursuit(
+                dt, player, police, player_wanted, wanted_level,
+                pursuing_police, player_in_jail, jail_timer,
+                violence_cooldown, special_buildings, overlay, narrator_queue
+            )
 
             # Process narrator queue - speak next line if ready
             if guide and not overlay.audio.muted:
@@ -974,149 +1161,185 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
         overlay.update(dt)
 
         # --- Rendering ---
-        # Corruption: afterimage effect (skip screen clear occasionally)
-        if not corruption.should_skip_screen_clear():
-            # Normal: clear and draw city
-            darkness_alpha = day_night.get_darkness_alpha()
-            city_map.draw(screen, camera, darkness_alpha)
+        if current_interior is not None:
+            # === INTERIOR RENDERING ===
+            screen.fill((15, 15, 20))  # Dark background
+
+            # Center the interior on screen
+            interior_offset_x = (WIDTH - current_interior.width) // 2
+            interior_offset_y = (HEIGHT - current_interior.height) // 2
+
+            # Draw interior with player position for highlighting
+            current_interior.draw(
+                screen,
+                interior_offset_x,
+                interior_offset_y,
+                player_pos=(
+                    interior_player_pos[0] + interior_offset_x,
+                    interior_player_pos[1] + interior_offset_y
+                )
+            )
+
+            # Draw player in interior
+            player_screen_x = interior_offset_x + interior_player_pos[0] - player.size // 2
+            player_screen_y = interior_offset_y + interior_player_pos[1] - player.size // 2
+            screen.blit(player.sprite, (player_screen_x, player_screen_y))
+
+            # Draw building name and exit hint
+            font = pygame.font.Font(None, 28)
+            if current_building:
+                title = font.render(current_building.name, True, (180, 180, 190))
+                screen.blit(title, (20, 20))
+
+            hint_font = pygame.font.Font(None, 22)
+            hint = hint_font.render("[B] or [Q] to exit  |  [E] to search", True, (120, 120, 130))
+            screen.blit(hint, (20, HEIGHT - 40))
+
         else:
-            # Afterimage: don't clear - creates smear effect
-            darkness_alpha = day_night.get_darkness_alpha()
-            city_map.draw(screen, camera, darkness_alpha)
+            # === EXTERIOR RENDERING ===
+            # Corruption: afterimage effect (skip screen clear occasionally)
+            if not corruption.should_skip_screen_clear():
+                # Normal: clear and draw city
+                darkness_alpha = day_night.get_darkness_alpha()
+                city_map.draw(screen, camera, darkness_alpha)
+            else:
+                # Afterimage: don't clear - creates smear effect
+                darkness_alpha = day_night.get_darkness_alpha()
+                city_map.draw(screen, camera, darkness_alpha)
 
-        # Draw anomaly markers (before NPCs so they appear under)
-        for anomaly in game_loop.state.anomalies:
-            # Skip hidden anomalies (not yet revealed)
-            if hasattr(anomaly, 'hidden') and anomaly.hidden:
-                continue
+            # Draw anomaly markers (before NPCs so they appear under)
+            for anomaly in game_loop.state.anomalies:
+                # Skip hidden anomalies (not yet revealed)
+                if hasattr(anomaly, 'hidden') and anomaly.hidden:
+                    continue
 
-            if not anomaly.discovered:
-                # Undiscovered anomalies have pulsing effect
-                ax, ay = camera.apply(anomaly.x, anomaly.y)
-                if 0 <= ax < WIDTH and 0 <= ay < HEIGHT:
-                    # Pulsing radius and opacity for visibility
-                    pulse = abs(math.sin(game_loop.state.phase_timer * 1.5))
-                    radius = int(10 + pulse * 8)  # Pulse between 10-18 pixels
+                if not anomaly.discovered:
+                    # Undiscovered anomalies have pulsing effect
+                    ax, ay = camera.apply(anomaly.x, anomaly.y)
+                    if 0 <= ax < WIDTH and 0 <= ay < HEIGHT:
+                        # Pulsing radius and opacity for visibility
+                        pulse = abs(math.sin(game_loop.state.phase_timer * 1.5))
+                        radius = int(10 + pulse * 8)  # Pulse between 10-18 pixels
 
-                    # Color based on visual_type for distinctiveness
-                    visual_type = getattr(anomaly, 'visual_type', 'pulse_purple')
-                    if visual_type == "pulse_purple":
-                        base_color = (100, 80, 150)
-                    elif visual_type == "pulse_red":
-                        base_color = (150, 50, 50)
-                    elif visual_type == "pulse_green":
-                        base_color = (50, 150, 80)
-                    elif visual_type == "pulse_cyan":
-                        base_color = (50, 150, 180)
-                    elif visual_type == "pulse_yellow":
-                        base_color = (180, 150, 50)
-                    elif visual_type == "flicker_white":
-                        # Flicker effect instead of pulse
-                        flicker = int(random.random() * 3) == 0
-                        base_color = (200, 200, 200) if flicker else (120, 120, 120)
-                    elif visual_type == "fade_black":
-                        # Fade in/out effect
-                        fade = abs(math.sin(game_loop.state.phase_timer * 0.5))
-                        base_color = (int(80 * fade), int(80 * fade), int(120 * fade))
-                    else:
-                        base_color = (100, 80, 150)
+                        # Color based on visual_type for distinctiveness
+                        visual_type = getattr(anomaly, 'visual_type', 'pulse_purple')
+                        if visual_type == "pulse_purple":
+                            base_color = (100, 80, 150)
+                        elif visual_type == "pulse_red":
+                            base_color = (150, 50, 50)
+                        elif visual_type == "pulse_green":
+                            base_color = (50, 150, 80)
+                        elif visual_type == "pulse_cyan":
+                            base_color = (50, 150, 180)
+                        elif visual_type == "pulse_yellow":
+                            base_color = (180, 150, 50)
+                        elif visual_type == "flicker_white":
+                            # Flicker effect instead of pulse
+                            flicker = int(random.random() * 3) == 0
+                            base_color = (200, 200, 200) if flicker else (120, 120, 120)
+                        elif visual_type == "fade_black":
+                            # Fade in/out effect
+                            fade = abs(math.sin(game_loop.state.phase_timer * 0.5))
+                            base_color = (int(80 * fade), int(80 * fade), int(120 * fade))
+                        else:
+                            base_color = (100, 80, 150)
 
-                    # Outer glow rings
-                    for i in range(3):
-                        ring_alpha = int((1 - i/3) * 60 * pulse)
-                        ring_radius = radius + i * 8
-                        ring_color = (
-                            base_color[0] + int(pulse * 50),
-                            base_color[1] + int(pulse * 70),
-                            base_color[2] + int(pulse * 50)
+                        # Outer glow rings
+                        for i in range(3):
+                            ring_alpha = int((1 - i/3) * 60 * pulse)
+                            ring_radius = radius + i * 8
+                            ring_color = (
+                                base_color[0] + int(pulse * 50),
+                                base_color[1] + int(pulse * 70),
+                                base_color[2] + int(pulse * 50)
+                            )
+                            glow_surf = pygame.Surface((ring_radius * 4, ring_radius * 4), pygame.SRCALPHA)
+                            pygame.draw.circle(glow_surf, (*ring_color, ring_alpha),
+                                              (ring_radius * 2, ring_radius * 2), ring_radius, 3)
+                            screen.blit(glow_surf, (int(ax) - ring_radius * 2, int(ay) - ring_radius * 2))
+
+                        # Inner pulsing core
+                        core_color = (
+                            base_color[0] + int(pulse * 60),
+                            base_color[1] + int(pulse * 80),
+                            base_color[2] + int(pulse * 60)
                         )
-                        glow_surf = pygame.Surface((ring_radius * 4, ring_radius * 4), pygame.SRCALPHA)
-                        pygame.draw.circle(glow_surf, (*ring_color, ring_alpha),
-                                          (ring_radius * 2, ring_radius * 2), ring_radius, 3)
-                        screen.blit(glow_surf, (int(ax) - ring_radius * 2, int(ay) - ring_radius * 2))
+                        pygame.draw.circle(screen, core_color, (int(ax), int(ay)), radius, 2)
+                        fill_color = (
+                            min(255, base_color[0] + 50),
+                            min(255, base_color[1] + 50),
+                            min(255, base_color[2] + 50)
+                        )
+                        pygame.draw.circle(screen, fill_color, (int(ax), int(ay)), max(2, radius - 4))
 
-                    # Inner pulsing core
-                    core_color = (
-                        base_color[0] + int(pulse * 60),
-                        base_color[1] + int(pulse * 80),
-                        base_color[2] + int(pulse * 60)
-                    )
-                    pygame.draw.circle(screen, core_color, (int(ax), int(ay)), radius, 2)
-                    fill_color = (
-                        min(255, base_color[0] + 50),
-                        min(255, base_color[1] + 50),
-                        min(255, base_color[2] + 50)
-                    )
-                    pygame.draw.circle(screen, fill_color, (int(ax), int(ay)), max(2, radius - 4))
+            # Draw exit portal
+            if exit_portal["active"]:
+                ex, ey = camera.apply(exit_portal["x"], exit_portal["y"])
+                if -100 <= ex < WIDTH + 100 and -100 <= ey < HEIGHT + 100:
+                    # Pulsing portal effect
+                    pulse = abs(math.sin(exit_portal["pulse"]))
+                    radius = int(30 + pulse * 15)
+                    # Outer glow
+                    for i in range(3):
+                        alpha = int((3 - i) * 30 * pulse)
+                        glow_color = (100, 200, 255)
+                        glow_surf = pygame.Surface((radius * 4, radius * 4), pygame.SRCALPHA)
+                        pygame.draw.circle(glow_surf, (*glow_color, alpha),
+                                           (radius * 2, radius * 2), radius + i * 10)
+                        screen.blit(glow_surf, (int(ex) - radius * 2, int(ey) - radius * 2))
+                    # Inner portal
+                    pygame.draw.circle(screen, (150, 220, 255), (int(ex), int(ey)), radius)
+                    pygame.draw.circle(screen, (200, 240, 255), (int(ex), int(ey)), radius - 5)
+                    # "EXIT" text
+                    exit_font = pygame.font.Font(None, 20)
+                    exit_text = exit_font.render("EXIT", True, (50, 50, 80))
+                    screen.blit(exit_text, (int(ex) - 15, int(ey) - 8))
 
-        # Draw exit portal
-        if exit_portal["active"]:
-            ex, ey = camera.apply(exit_portal["x"], exit_portal["y"])
-            if -100 <= ex < WIDTH + 100 and -100 <= ey < HEIGHT + 100:
-                # Pulsing portal effect
-                pulse = abs(math.sin(exit_portal["pulse"]))
-                radius = int(30 + pulse * 15)
-                # Outer glow
-                for i in range(3):
-                    alpha = int((3 - i) * 30 * pulse)
-                    glow_color = (100, 200, 255)
-                    glow_surf = pygame.Surface((radius * 4, radius * 4), pygame.SRCALPHA)
-                    pygame.draw.circle(glow_surf, (*glow_color, alpha),
-                                       (radius * 2, radius * 2), radius + i * 10)
-                    screen.blit(glow_surf, (int(ex) - radius * 2, int(ey) - radius * 2))
-                # Inner portal
-                pygame.draw.circle(screen, (150, 220, 255), (int(ex), int(ey)), radius)
-                pygame.draw.circle(screen, (200, 240, 255), (int(ex), int(ey)), radius - 5)
-                # "EXIT" text
-                exit_font = pygame.font.Font(None, 20)
-                exit_text = exit_font.render("EXIT", True, (50, 50, 80))
-                screen.blit(exit_text, (int(ex) - 15, int(ey) - 8))
+            # Draw crime indicators
+            crime_font = pygame.font.Font(None, 20)
+            for crime in crime_sim.active_crimes:
+                cx, cy = camera.apply(crime.x, crime.y)
+                if 0 <= cx < WIDTH and 0 <= cy < HEIGHT:
+                    if crime.being_chased:
+                        # Red flashing indicator for chase
+                        flash = int(abs(math.sin(game_loop.state.phase_timer * 8)) * 255)
+                        # Flashing red circle
+                        pygame.draw.circle(screen, (flash, 0, 0), (int(cx), int(cy) - 40), 8)
+                        # "CHASE" text
+                        if flash > 128:  # Only show text when bright
+                            chase_text = crime_font.render("CHASE", True, (255, flash, flash))
+                            screen.blit(chase_text, (int(cx) - 25, int(cy) - 60))
+                    else:
+                        # Flashing red indicator for crime in progress
+                        flash = int(abs(math.sin(game_loop.state.phase_timer * 4)) * 200 + 55)
+                        pygame.draw.circle(screen, (flash, 0, 0), (int(cx), int(cy) - 40), 8)
+                        # "CRIME" text
+                        if flash > 128:  # Only show text when bright
+                            crime_text = crime_font.render("CRIME", True, (255, flash // 2, flash // 2))
+                            screen.blit(crime_text, (int(cx) - 25, int(cy) - 60))
 
-        # Draw crime indicators
-        crime_font = pygame.font.Font(None, 20)
-        for crime in crime_sim.active_crimes:
-            cx, cy = camera.apply(crime.x, crime.y)
-            if 0 <= cx < WIDTH and 0 <= cy < HEIGHT:
-                if crime.being_chased:
-                    # Red flashing indicator for chase
-                    flash = int(abs(math.sin(game_loop.state.phase_timer * 8)) * 255)
-                    # Flashing red circle
-                    pygame.draw.circle(screen, (flash, 0, 0), (int(cx), int(cy) - 40), 8)
-                    # "CHASE" text
-                    if flash > 128:  # Only show text when bright
-                        chase_text = crime_font.render("CHASE", True, (255, flash, flash))
-                        screen.blit(chase_text, (int(cx) - 25, int(cy) - 60))
-                else:
-                    # Flashing red indicator for crime in progress
-                    flash = int(abs(math.sin(game_loop.state.phase_timer * 4)) * 200 + 55)
-                    pygame.draw.circle(screen, (flash, 0, 0), (int(cx), int(cy) - 40), 8)
-                    # "CRIME" text
-                    if flash > 128:  # Only show text when bright
-                        crime_text = crime_font.render("CRIME", True, (255, flash // 2, flash // 2))
-                        screen.blit(crime_text, (int(cx) - 25, int(cy) - 60))
+            # Draw vehicles (below NPCs)
+            vehicle_manager.draw(screen, camera)
 
-        # Draw vehicles (below NPCs)
-        vehicle_manager.draw(screen, camera)
+            # Draw animals
+            animal_manager.draw(screen, camera)
 
-        # Draw animals
-        animal_manager.draw(screen, camera)
+            # Draw NPCs
+            for npc in all_npcs:
+                if not npc.in_jail and not npc.in_building:
+                    npc.draw(screen, camera)
 
-        # Draw NPCs
-        for npc in all_npcs:
-            if not npc.in_jail and not npc.in_building:
-                npc.draw(screen, camera)
+            # Draw player
+            player.draw(screen, camera)
 
-        # Draw player
-        player.draw(screen, camera)
+            # Draw special buildings (with highlighting near player)
+            special_buildings.draw(screen, camera, player.x, player.y)
 
-        # Draw special buildings (with highlighting near player)
-        special_buildings.draw(screen, camera, player.x, player.y)
+            # Draw investigation clues
+            investigation.draw_clues(screen, camera)
 
-        # Draw investigation clues
-        investigation.draw_clues(screen, camera)
-
-        # Draw weather effects on top of world
-        weather.draw(screen, camera)
+            # Draw weather effects on top of world
+            weather.draw(screen, camera)
 
         # UI elements (screen-space, not affected by camera)
         font = pygame.font.Font(None, 24)
@@ -1154,6 +1377,29 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
         for i, stat in enumerate(stats):
             text_surface = font.render(stat, True, WHITE)
             screen.blit(text_surface, (12, 12 + i * 24))
+
+        # Wanted status indicator (below stats)
+        if player_in_jail:
+            # Jail indicator
+            jail_bg = pygame.Surface((180, 50))
+            jail_bg.set_alpha(200)
+            jail_bg.fill((80, 40, 40))
+            screen.blit(jail_bg, (5, 190))
+            jail_text = font.render("IN JAIL", True, (255, 100, 100))
+            screen.blit(jail_text, (12, 195))
+            timer_text = small_font.render(f"Release in: {int(jail_timer)}s", True, (200, 150, 150))
+            screen.blit(timer_text, (12, 220))
+        elif player_wanted:
+            # Wanted indicator with flashing effect
+            flash = int(abs(math.sin(time.time() * 4)) * 80)
+            wanted_bg = pygame.Surface((180, 50))
+            wanted_bg.set_alpha(200)
+            wanted_bg.fill((80 + flash, 20, 20))
+            screen.blit(wanted_bg, (5, 190))
+            wanted_text = font.render(f"WANTED Level {int(wanted_level)}", True, (255, 200 + flash // 2, 100))
+            screen.blit(wanted_text, (12, 195))
+            pursuit_text = small_font.render(f"Police pursuing: {len(pursuing_police)}", True, (200, 150, 150))
+            screen.blit(pursuit_text, (12, 220))
 
         # Time/Weather panel (right side)
         time_panel_bg = pygame.Surface((160, 80))
@@ -1600,9 +1846,24 @@ def _generate_name(npc_type):
 
 
 def _do_attack(player, all_npcs, overlay, game_loop, narrator_queue):
-    """Handle attack action - damages nearby NPCs."""
+    """
+    Handle attack action - damages nearby NPCs.
+
+    Returns dict with attack info for police pursuit system:
+        - attacked: bool - whether any NPC was hit
+        - attacked_police: bool - whether police were attacked
+        - attacked_civilian: bool - whether civilians were attacked
+        - attacked_criminal: bool - whether criminals were attacked
+        - fatal: bool - whether anyone was knocked out
+    """
     attack_range = 60
-    attacked = False
+    result = {
+        "attacked": False,
+        "attacked_police": False,
+        "attacked_civilian": False,
+        "attacked_criminal": False,
+        "fatal": False,
+    }
 
     for npc in all_npcs:
         if npc.in_jail:
@@ -1613,30 +1874,55 @@ def _do_attack(player, all_npcs, overlay, game_loop, narrator_queue):
 
         if dist < attack_range:
             npc.health -= 25
-            attacked = True
-            # Attacking reduces karma
-            player.karma -= 3
-            # Witnesses lose trust
+            result["attacked"] = True
+
+            # Track what type was attacked
+            if npc.type == "police":
+                result["attacked_police"] = True
+            elif npc.type == "civilian":
+                result["attacked_civilian"] = True
+            elif npc.type == "criminal":
+                result["attacked_criminal"] = True
+
+            # Attacking reduces karma (more for police/civilians)
+            if npc.type == "police":
+                player.karma -= 10
+            elif npc.type == "civilian":
+                player.karma -= 5
+            else:  # criminal
+                player.karma -= 1
+
+            # Witnesses lose trust (permanent damage)
             npc.trust = max(-100, npc.trust - 30)
+
+            # Mark NPC as having been attacked by player (for memory)
+            if not hasattr(npc, 'attacked_by_player'):
+                npc.attacked_by_player = 0
+            npc.attacked_by_player += 1
 
             if npc.health <= 0:
                 npc.in_jail = True  # "Knocked out" - removed from play
+                result["fatal"] = True
                 overlay.notifications.show_glitch("They fall.", 1.5, "top_right")
                 game_loop.on_player_attacked(npc.type, fatal=True)
             else:
                 game_loop.on_player_attacked(npc.type, fatal=False)
 
-    if attacked:
-        # Narrator comments on violence
-        comments = [
-            "Violence. How predictable.",
-            "The city sees everything you do.",
-            "Is this the path you choose?",
-            "They won't forget this."
-        ]
-        narrator_queue.queue_line(random.choice(comments))
+    if result["attacked"]:
+        # Choose narrator line based on target type
+        if result["attacked_police"]:
+            lines = VIOLENCE_NARRATOR_LINES.get("attack_police", [])
+        elif result["attacked_civilian"]:
+            lines = VIOLENCE_NARRATOR_LINES.get("attack_civilian", [])
+        else:
+            lines = VIOLENCE_NARRATOR_LINES.get("attack_criminal", [])
+
+        if lines:
+            narrator_queue.queue_line(random.choice(lines))
     else:
         overlay.notifications.show_glitch("Nothing to hit.", 1.0, "center")
+
+    return result
 
 
 def _generate_backstory(npc_type):
@@ -1701,6 +1987,168 @@ def _get_situation(npc: CityNPC, player: CityPlayer, plot_state):
         return "suspicious"
 
     return "greeting"
+
+
+def _update_police_pursuit(dt, player, police, player_wanted, wanted_level,
+                            pursuing_police, player_in_jail, jail_timer,
+                            violence_cooldown, special_buildings, overlay,
+                            narrator_queue):
+    """
+    Update police pursuit system.
+
+    Returns updated tuple: (player_wanted, wanted_level, pursuing_police,
+                           player_in_jail, jail_timer, violence_cooldown)
+    """
+    # Decay violence cooldown
+    if violence_cooldown > 0:
+        violence_cooldown -= dt
+    else:
+        # Slowly decay wanted level when not actively violent
+        if wanted_level > 0 and not pursuing_police:
+            wanted_level = max(0, wanted_level - dt * 0.1)
+            if wanted_level == 0:
+                player_wanted = False
+
+    # Handle jail time
+    if player_in_jail:
+        jail_timer -= dt
+        if jail_timer <= 0:
+            # Release from jail
+            player_in_jail = False
+            jail_timer = 0
+            player_wanted = False
+            wanted_level = 0
+            pursuing_police = []
+
+            # Teleport player out of jail
+            if special_buildings and special_buildings.jail:
+                jail = special_buildings.jail
+                player.x = jail.x + jail.width + 50
+                player.y = jail.y + jail.height // 2
+
+            # Narrator comment on release
+            lines = VIOLENCE_NARRATOR_LINES.get("jail_release", [])
+            if lines:
+                narrator_queue.queue_line(random.choice(lines))
+
+            overlay.notifications.show_glitch("Released.", 2.0, "center")
+
+        return (player_wanted, wanted_level, pursuing_police,
+                player_in_jail, jail_timer, violence_cooldown)
+
+    # Update pursuing police
+    if player_wanted and not player_in_jail:
+        # Find nearby police to join pursuit
+        pursuit_range = 300 + wanted_level * 100  # Higher wanted = wider detection
+        for cop in police:
+            if cop.in_jail:
+                continue
+            dx = cop.x - player.x
+            dy = cop.y - player.y
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            # Add to pursuit if in range and not already pursuing
+            if dist < pursuit_range and cop not in pursuing_police:
+                pursuing_police.append(cop)
+
+        # Police chase player
+        catch_distance = 35
+        for cop in pursuing_police[:]:  # Copy for safe removal
+            if cop.in_jail:
+                pursuing_police.remove(cop)
+                continue
+
+            # Move toward player (faster than normal)
+            dx = player.x - cop.x
+            dy = player.y - cop.y
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            if dist > 0:
+                # Police move faster when pursuing (based on wanted level)
+                speed = 2.5 + wanted_level * 0.5
+                cop.x += (dx / dist) * speed
+                cop.y += (dy / dist) * speed
+
+            # Check if caught
+            if dist < catch_distance:
+                # Player caught!
+                player_in_jail = True
+                jail_timer = 10.0 + wanted_level * 5.0  # 10-25 seconds based on crimes
+
+                # Teleport to jail
+                if special_buildings and special_buildings.jail:
+                    jail = special_buildings.jail
+                    player.x = jail.x + jail.width // 2
+                    player.y = jail.y + jail.height // 2
+
+                # Narrator comment
+                lines = VIOLENCE_NARRATOR_LINES.get("player_arrested", [])
+                if lines:
+                    narrator_queue.queue_line(random.choice(lines))
+
+                overlay.notifications.show_glitch(
+                    f"ARRESTED - {int(jail_timer)}s", 3.0, "center"
+                )
+
+                # Reset pursuit
+                pursuing_police = []
+                break
+
+    return (player_wanted, wanted_level, pursuing_police,
+            player_in_jail, jail_timer, violence_cooldown)
+
+
+def _handle_attack_consequences(attack_result, player, police, player_wanted,
+                                  wanted_level, pursuing_police, violence_cooldown,
+                                  total_attacks, overlay, narrator_queue):
+    """
+    Handle consequences of player attack.
+
+    Returns updated tuple: (player_wanted, wanted_level, pursuing_police,
+                           violence_cooldown, total_attacks)
+    """
+    if not attack_result["attacked"]:
+        return (player_wanted, wanted_level, pursuing_police,
+                violence_cooldown, total_attacks)
+
+    total_attacks += 1
+    violence_cooldown = 30.0  # Reset cooldown on violence
+
+    # Increase wanted level based on target
+    if attack_result["attacked_police"]:
+        # Attacking police is very bad
+        wanted_level = min(3, wanted_level + 1.5)
+        player_wanted = True
+    elif attack_result["attacked_civilian"]:
+        # Attacking civilians alerts police
+        wanted_level = min(3, wanted_level + 0.75)
+        if wanted_level >= 0.5:
+            player_wanted = True
+    else:
+        # Attacking criminals - police don't care as much
+        wanted_level = min(3, wanted_level + 0.25)
+
+    # Fatal attacks escalate further
+    if attack_result["fatal"]:
+        wanted_level = min(3, wanted_level + 0.5)
+
+    # Notify about wanted status changes
+    if player_wanted and not pursuing_police:
+        # Start pursuit
+        lines = VIOLENCE_NARRATOR_LINES.get("police_alerted", [])
+        if lines:
+            narrator_queue.queue_line(random.choice(lines))
+        overlay.notifications.show_glitch(
+            f"WANTED - Level {int(wanted_level)}", 2.0, "top_right"
+        )
+    elif wanted_level >= 2 and len(pursuing_police) < 3:
+        # Escalation
+        lines = VIOLENCE_NARRATOR_LINES.get("wanted_escalation", [])
+        if lines:
+            narrator_queue.queue_line(random.choice(lines))
+
+    return (player_wanted, wanted_level, pursuing_police,
+            violence_cooldown, total_attacks)
 
 
 # Exit codes for launcher integration
