@@ -55,13 +55,40 @@ class Vehicle:
     def __post_init__(self):
         """Set color based on vehicle type."""
         type_colors = {
-            VehicleType.CAR: [(180, 50, 50), (50, 50, 180), (50, 150, 50),
-                             (180, 180, 50), (100, 100, 100), (200, 200, 200)],
-            VehicleType.TRUCK: [(80, 80, 80), (100, 80, 60), (60, 80, 100)],
-            VehicleType.BUS: [(200, 150, 50), (50, 100, 150)],
+            # Expanded car palette - common real car colors
+            VehicleType.CAR: [
+                (180, 50, 50),    # Red
+                (50, 50, 180),    # Blue
+                (50, 150, 50),    # Green
+                (180, 180, 50),   # Yellow
+                (100, 100, 100),  # Gray
+                (200, 200, 200),  # Silver
+                (30, 30, 30),     # Black
+                (240, 240, 240),  # White
+                (150, 80, 50),    # Brown
+                (80, 130, 150),   # Teal
+                (140, 70, 140),   # Purple
+                (200, 100, 50),   # Orange
+                (70, 90, 80),     # Dark green
+                (120, 80, 60),    # Bronze
+            ],
+            VehicleType.TRUCK: [
+                (80, 80, 80),     # Dark gray
+                (100, 80, 60),    # Brown
+                (60, 80, 100),    # Blue-gray
+                (180, 50, 50),    # Red
+                (240, 240, 240),  # White
+                (30, 30, 30),     # Black
+            ],
+            VehicleType.BUS: [
+                (200, 150, 50),   # Yellow (school bus)
+                (50, 100, 150),   # Blue (city bus)
+                (150, 150, 150),  # Gray (transit)
+                (180, 50, 50),    # Red (tour bus)
+            ],
             VehicleType.POLICE_CAR: [(30, 30, 30)],  # Black with lights
             VehicleType.AMBULANCE: [(255, 255, 255)],  # White with cross
-            VehicleType.TAXI: [(255, 200, 50)],  # Yellow
+            VehicleType.TAXI: [(255, 200, 50), (255, 220, 80)],  # Yellow variants
         }
         colors = type_colors.get(self.vehicle_type, [(100, 100, 100)])
         self.color = random.choice(colors)
@@ -279,6 +306,12 @@ class VehicleManager:
                 )[0]
 
                 vehicle = Vehicle(x=x, y=y, vehicle_type=vtype, direction=direction)
+
+                # Give vehicle an initial path so it starts moving
+                if self.road_network:
+                    vehicle.path = self.road_network.get_random_path(x, y)
+                    vehicle.path_index = 0
+
                 self.vehicles.append(vehicle)
 
     def update(self, dt: float):
@@ -1042,12 +1075,16 @@ class InvestigationManager:
 # ROAD NETWORK (for vehicle pathfinding)
 # =============================================================================
 
-@dataclass
+@dataclass(eq=False)
 class RoadNode:
     """A node in the road network."""
     x: float
     y: float
     connections: List['RoadNode'] = field(default_factory=list)
+
+    def __hash__(self):
+        """Hash based on position (unique per node)."""
+        return hash((self.x, self.y))
 
 
 class RoadNetwork:

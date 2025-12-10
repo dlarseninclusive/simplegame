@@ -40,6 +40,13 @@ class NarratorQueue:
         self.queue: deque[tuple[str, bool]] = deque()  # (line, is_priority)
         self.current_time: float = 0.0
 
+        # Event log integration
+        self._event_log = None
+
+    def set_event_log(self, event_log):
+        """Set the event log for logging narrator lines."""
+        self._event_log = event_log
+
     def update(self, dt: float) -> Optional[str]:
         """
         Update timer and return a line to speak if ready.
@@ -57,6 +64,11 @@ class NarratorQueue:
         if self.queue:
             line, _ = self.queue.popleft()
             self.last_speak_time = self.current_time
+
+            # Log to event log
+            if self._event_log:
+                self._event_log.log_narrator(line)
+
             return line
 
         return None

@@ -56,13 +56,53 @@ class MockPygame:
 
     SRCALPHA = 0x00010000
 
+    # Key constants (needed by game.controls.config)
+    K_w = 119
+    K_a = 97
+    K_s = 115
+    K_d = 100
+    K_q = 113
+    K_e = 101
+    K_UP = 273
+    K_DOWN = 274
+    K_LEFT = 276
+    K_RIGHT = 275
+    K_SPACE = 32
+    K_ESCAPE = 27
+    K_TAB = 9
+    K_RETURN = 13
+    K_1 = 49
+    K_2 = 50
+    K_3 = 51
+    K_4 = 52
+    K_i = 105
+    K_m = 109
+    K_g = 103
+    K_n = 110
+    K_h = 104
+    K_j = 106
+    K_b = 98
+    K_BACKQUOTE = 96
+    K_F12 = 293
+
+    # Mouse button constants
+    BUTTON_LEFT = 1
+    BUTTON_MIDDLE = 2
+    BUTTON_RIGHT = 3
+
+    # Event types
+    MOUSEBUTTONDOWN = 1025
+    MOUSEBUTTONUP = 1026
+    KEYDOWN = 768
+    KEYUP = 769
+
     @staticmethod
     def init():
         pass
 
     class draw:
         @staticmethod
-        def rect(surface, color, rect, width=0):
+        def rect(surface, color, rect, width=0, border_radius=0):
             pass
         @staticmethod
         def line(surface, color, start, end, width=1):
@@ -70,6 +110,25 @@ class MockPygame:
         @staticmethod
         def circle(surface, color, pos, radius, width=0):
             pass
+        @staticmethod
+        def polygon(surface, color, points):
+            pass
+
+    class font:
+        @staticmethod
+        def init():
+            pass
+        @staticmethod
+        def Font(name, size):
+            return MockPygame._MockFont()
+
+    class _MockFont:
+        def render(self, text, antialias, color):
+            return MockPygame.Surface((len(text) * 10, 20))
+        def size(self, text):
+            return (len(text) * 10, 20)
+        def get_linesize(self):
+            return 20
 
 # Install mock
 sys.modules['pygame'] = MockPygame()

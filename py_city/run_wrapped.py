@@ -295,13 +295,22 @@ class CityNPC:
             self.y += (dy / dist) * speed
 
     def draw(self, screen: pygame.Surface, camera: Camera):
-        """Draw NPC with health bar."""
+        """Draw NPC with shadow and health bar."""
         screen_x, screen_y = camera.apply(self.x, self.y)
 
         # Skip if off screen
         if (screen_x < -self.size or screen_x > camera.screen_width + self.size or
             screen_y < -self.size or screen_y > camera.screen_height + self.size):
             return
+
+        # Draw shadow (ellipse under character)
+        shadow_width = int(self.size * 0.8)
+        shadow_height = int(self.size * 0.3)
+        shadow_x = screen_x + (self.size - shadow_width) // 2
+        shadow_y = screen_y + self.size - shadow_height // 2
+        shadow_surf = pygame.Surface((shadow_width, shadow_height), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surf, (0, 0, 0, 60), (0, 0, shadow_width, shadow_height))
+        screen.blit(shadow_surf, (shadow_x, shadow_y))
 
         # Draw sprite
         screen.blit(self.sprite, (screen_x, screen_y))
@@ -390,9 +399,19 @@ class CityPlayer:
                 self.y = new_y
 
     def draw(self, screen: pygame.Surface, camera: Camera):
-        """Draw player with health bar."""
+        """Draw player with shadow and health bar."""
         screen_x, screen_y = camera.apply(self.x, self.y)
 
+        # Draw shadow (ellipse under character)
+        shadow_width = int(self.size * 0.8)
+        shadow_height = int(self.size * 0.3)
+        shadow_x = screen_x + (self.size - shadow_width) // 2
+        shadow_y = screen_y + self.size - shadow_height // 2
+        shadow_surf = pygame.Surface((shadow_width, shadow_height), pygame.SRCALPHA)
+        pygame.draw.ellipse(shadow_surf, (0, 0, 0, 80), (0, 0, shadow_width, shadow_height))
+        screen.blit(shadow_surf, (shadow_x, shadow_y))
+
+        # Draw sprite
         screen.blit(self.sprite, (screen_x, screen_y))
 
         # Health bar
@@ -571,6 +590,13 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     # Slower narrator pacing - give player time to read instructions
     narrator_queue = NarratorQueue(min_gap=10.0, max_queue=2)
 
+    # Initialize event log and connect to narrator and dialogue systems
+    from event_log import get_event_log, reset_event_log
+    reset_event_log()  # Start fresh each game session
+    event_log = get_event_log()
+    narrator_queue.set_event_log(event_log)
+    overlay.dialogue.set_event_log(event_log)
+
     # Initialize game loop manager
     game_loop = GameLoopManager(
         city_config.world_width,
@@ -726,8 +752,9 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     exit_menu.add_option("Keep Exploring", on_keep_exploring)
     exit_menu.add_option("Move to Py Horror", on_move_to_next)
 
-    # Status/inventory panel
+    # Status/inventory panel with tabs
     show_status_panel = False
+    status_panel_tab = 0  # 0=Items, 1=Quests, 2=Stats
 
     # Click-to-move target (world coordinates)
     move_target = None
@@ -758,6 +785,14 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                 publish(PlotEvent.QUIT_CLICK)
                 running_ref[0] = False
                 continue
+
+            # Handle mouse clicks on status panel tabs
+            if show_status_panel and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                tab_rects = _get_status_panel_tab_rects(WIDTH, HEIGHT)
+                for i, rect in enumerate(tab_rects):
+                    if rect.collidepoint(event.pos):
+                        status_panel_tab = i
+                        break
 
             # Let menus handle events first
             if exit_menu.is_open:
@@ -827,6 +862,22 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             if input_handler.just_pressed(Action.STATUS):
                 show_status_panel = not show_status_panel
 
+            # Tab switching within status panel (1, 2, 3, 4 keys)
+            if show_status_panel:
+                if keys[pygame.K_1]:
+                    status_panel_tab = 0  # Items
+                elif keys[pygame.K_2]:
+                    status_panel_tab = 1  # Quests
+                elif keys[pygame.K_3]:
+                    status_panel_tab = 2  # Stats
+                elif keys[pygame.K_4]:
+                    status_panel_tab = 3  # Log
+                # Also allow left/right arrows to switch tabs
+                if input_handler.just_pressed(Action.MOVE_LEFT):
+                    status_panel_tab = (status_panel_tab - 1) % 4
+                elif input_handler.just_pressed(Action.MOVE_RIGHT):
+                    status_panel_tab = (status_panel_tab + 1) % 4
+
             # Dev: Skip phase
             if input_handler.just_pressed(Action.SKIP_PHASE):
                 current = game_loop.state.phase
@@ -881,16 +932,38 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             # Interact (E key) - NPC, building entry, interior search, or door exit
             if input_handler.just_pressed(Action.INTERACT):
                 if current_interior is not None:
-                    # Inside a building - check for door first, then search nearby object
+                    # Inside a building - check for door, stairs, or searchable object
                     if interior_search_cooldown <= 0:
                         nearby_obj = current_interior.get_nearby_object(
                             interior_player_pos[0], interior_player_pos[1], radius=60
                         )
                         if nearby_obj and nearby_obj.is_door:
-                            # Exit through door
+                            # Exit through door (only on ground floor)
                             overlay.notifications.show_glitch("You leave the building.", 1.5, "center")
+                            # Reset to ground floor for next entry
+                            if current_building:
+                                interior_manager.reset_to_ground(id(current_building))
                             current_interior = None
                             current_building = None
+                        elif nearby_obj and nearby_obj.is_stairs:
+                            # Use stairs to change floor
+                            direction = nearby_obj.stairs_direction
+                            if current_interior.can_change_level(direction):
+                                current_interior.change_level(direction)
+                                level_name = current_interior.get_level_name()
+                                if direction > 0:
+                                    overlay.notifications.show_glitch(f"You climb the stairs to the {level_name}.", 2.0, "center")
+                                else:
+                                    overlay.notifications.show_glitch(f"You descend to the {level_name}...", 2.0, "center")
+                                # Narrator comment on entering basement (creepy)
+                                if current_interior.current_level == -1 and not overlay.audio.muted:
+                                    basement_lines = [
+                                        "The air grows colder as you descend.",
+                                        "Something watches from the shadows below.",
+                                        "The basement. Where secrets go to hide.",
+                                    ]
+                                    narrator_queue.queue_line(random.choice(basement_lines))
+                                interior_search_cooldown = 0.5
                         elif nearby_obj and nearby_obj.searchable and not nearby_obj.searched:
                             # Search the object
                             horror_stage = plot_state.get_stage().value
@@ -950,7 +1023,7 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                             if situation == "reveal_secret":
                                 interacted.secret_revealed = True
                             overlay.show_npc_dialogue_with_guide(npc_id, "", situation)
-                            dialog_timer = 4.0
+                            dialog_timer = 10.0  # Base timer, but NPC stays frozen while dialogue active
                             talking_npc = interacted
                             idle_timer = 0.0
                             game_loop.on_player_talked(interacted.type)
@@ -1148,10 +1221,14 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             if exit_portal["active"]:
                 exit_portal["pulse"] += dt * 3
 
-            # Dialog timer
-            if dialog_timer > 0:
-                dialog_timer -= dt
-                if dialog_timer <= 0:
+            # Dialog timer - NPC stays frozen while dialogue is active
+            if talking_npc is not None:
+                # Check if dialogue is still showing (either timer or active dialogue box)
+                dialogue_active = overlay.dialogue.active_dialogue is not None
+                if dialog_timer > 0:
+                    dialog_timer -= dt
+                # Only release NPC when both timer expired AND no dialogue showing
+                if dialog_timer <= 0 and not dialogue_active:
                     talking_npc = None
 
         # Camera follows player (even when paused for smooth visuals)
@@ -1466,7 +1543,7 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
         # Draw status panel if open
         if show_status_panel:
-            _draw_status_panel(screen, player, game_loop, font)
+            _draw_status_panel(screen, player, game_loop, font, status_panel_tab, plot_state)
 
         # Draw shared menus
         pause_menu.draw(screen)
@@ -1672,16 +1749,30 @@ def _draw_exit_menu(screen: pygame.Surface, options: list, selection: int, font:
     screen.blit(inst_text, inst_rect)
 
 
-def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.font.Font):
-    """Draw the status/inventory panel (Tab menu)."""
+def _get_status_panel_tab_rects(screen_width: int, screen_height: int) -> list[pygame.Rect]:
+    """Get the tab rectangles for click detection."""
+    panel_width = 650
+    panel_x = (screen_width - panel_width) // 2
+    panel_y = (screen_height - 480) // 2
+    tab_width = panel_width // 4
+
+    return [
+        pygame.Rect(panel_x + i * tab_width, panel_y, tab_width, 40)
+        for i in range(4)
+    ]
+
+
+def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.font.Font,
+                       active_tab: int = 0, plot_state=None):
+    """Draw the tabbed status/inventory panel (Tab menu)."""
     # Semi-transparent overlay
     overlay_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
     overlay_surf.fill((0, 0, 0, 200))
     screen.blit(overlay_surf, (0, 0))
 
     # Panel dimensions
-    panel_width = 600
-    panel_height = 450
+    panel_width = 650
+    panel_height = 480
     panel_x = (screen.get_width() - panel_width) // 2
     panel_y = (screen.get_height() - panel_height) // 2
 
@@ -1691,47 +1782,147 @@ def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.f
     pygame.draw.rect(panel_bg, (80, 80, 100), (0, 0, panel_width, panel_height), 2)
     screen.blit(panel_bg, (panel_x, panel_y))
 
-    # Title
+    # Fonts
     title_font = pygame.font.Font(None, 36)
-    title_text = title_font.render("STATUS", True, (200, 200, 220))
-    screen.blit(title_text, (panel_x + 20, panel_y + 15))
-
-    # Sections
+    tab_font = pygame.font.Font(None, 28)
     section_font = pygame.font.Font(None, 24)
     info_font = pygame.font.Font(None, 20)
-    y_offset = panel_y + 60
+    item_font = pygame.font.Font(None, 22)
 
-    # Player Stats
-    screen.blit(section_font.render("PLAYER", True, (150, 180, 200)), (panel_x + 20, y_offset))
-    y_offset += 30
-    stats = [
-        f"Alignment: {player.alignment.upper()}",
-        f"Karma: {player.karma}",
-        f"Health: {player.health}%",
-    ]
-    for stat in stats:
-        screen.blit(info_font.render(stat, True, (140, 140, 150)), (panel_x + 40, y_offset))
-        y_offset += 22
+    # Draw tabs at top (clickable)
+    tab_names = ["[1] ITEMS", "[2] QUESTS", "[3] STATS", "[4] LOG"]
+    tab_width = panel_width // 4
+    for i, tab_name in enumerate(tab_names):
+        tab_x = panel_x + i * tab_width
+        tab_rect = pygame.Rect(tab_x, panel_y, tab_width, 40)
 
-    y_offset += 15
+        # Active tab is highlighted
+        if i == active_tab:
+            pygame.draw.rect(screen, (50, 55, 70), tab_rect)
+            pygame.draw.line(screen, (100, 150, 200), (tab_x, panel_y + 39), (tab_x + tab_width, panel_y + 39), 2)
+            text_color = (200, 220, 255)
+        else:
+            # Hover effect - check if mouse is over this tab
+            mouse_pos = pygame.mouse.get_pos()
+            if tab_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, (40, 42, 50), tab_rect)
+                text_color = (150, 160, 180)
+            else:
+                pygame.draw.rect(screen, (30, 32, 38), tab_rect)
+                text_color = (100, 110, 130)
 
-    # Faction Status
-    screen.blit(section_font.render("FACTION STATUS", True, (150, 180, 200)), (panel_x + 20, y_offset))
-    y_offset += 30
-    faction_info = [
-        f"Civilians: {'Friendly' if player.karma >= 0 else 'Wary'}",
-        f"Police: {'Allied' if player.karma > 5 else 'Neutral' if player.karma >= -5 else 'Hostile'}",
-        f"Criminals: {'Respected' if player.karma < -5 else 'Distrusted'}",
-    ]
-    for info in faction_info:
-        screen.blit(info_font.render(info, True, (140, 140, 150)), (panel_x + 40, y_offset))
-        y_offset += 22
+        tab_text = tab_font.render(tab_name, True, text_color)
+        text_x = tab_x + (tab_width - tab_text.get_width()) // 2
+        screen.blit(tab_text, (text_x, panel_y + 10))
 
-    y_offset += 15
+    # Content area starts below tabs
+    content_y = panel_y + 50
+    content_height = panel_height - 80
 
-    # Quest/Progress
-    screen.blit(section_font.render("CURRENT OBJECTIVE", True, (150, 180, 200)), (panel_x + 20, y_offset))
-    y_offset += 30
+    # Draw content based on active tab
+    if active_tab == 0:
+        # ITEMS TAB
+        _draw_items_tab(screen, panel_x, content_y, panel_width, content_height,
+                        section_font, item_font, info_font, plot_state)
+    elif active_tab == 1:
+        # QUESTS TAB
+        _draw_quests_tab(screen, panel_x, content_y, panel_width, content_height,
+                         section_font, item_font, info_font, game_loop)
+    elif active_tab == 2:
+        # STATS TAB
+        _draw_stats_tab(screen, panel_x, content_y, panel_width, content_height,
+                        section_font, info_font, player, game_loop, plot_state)
+    else:
+        # LOG TAB
+        _draw_log_tab(screen, panel_x, content_y, panel_width, content_height,
+                      section_font, item_font, info_font)
+
+    # Close hint at bottom
+    close_text = info_font.render("TAB/ESC: Close  |  1-4 or Arrow Keys: Switch tabs", True, (80, 90, 100))
+    screen.blit(close_text, (panel_x + panel_width // 2 - close_text.get_width() // 2, panel_y + panel_height - 22))
+
+
+def _draw_items_tab(screen, panel_x, content_y, panel_width, content_height,
+                    section_font, item_font, info_font, plot_state):
+    """Draw the Items tab content."""
+    y = content_y + 15
+
+    # Title
+    screen.blit(section_font.render("INVENTORY", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 35
+
+    if not plot_state or not plot_state.inventory:
+        screen.blit(info_font.render("No items collected yet.", True, (100, 100, 110)), (panel_x + 30, y))
+        screen.blit(info_font.render("Search furniture in buildings to find items.", True, (80, 90, 100)), (panel_x + 30, y + 25))
+        return
+
+    inventory = plot_state.inventory
+    items = inventory.items
+
+    if not items:
+        screen.blit(info_font.render("No items collected yet.", True, (100, 100, 110)), (panel_x + 30, y))
+        screen.blit(info_font.render("Search furniture in buildings to find items.", True, (80, 90, 100)), (panel_x + 30, y + 25))
+        return
+
+    # Get current horror stage for descriptions
+    horror_stage = plot_state.get_stage().value if plot_state else "early"
+
+    # Draw items in a grid layout
+    col_width = (panel_width - 40) // 2
+    items_per_col = 6
+    col = 0
+    row = 0
+
+    for item in items:
+        item_x = panel_x + 20 + col * col_width
+        item_y = y + row * 60
+
+        # Item background
+        item_rect = pygame.Rect(item_x, item_y, col_width - 10, 55)
+        pygame.draw.rect(screen, (35, 38, 45), item_rect)
+        pygame.draw.rect(screen, (60, 65, 80), item_rect, 1)
+
+        # Icon
+        icon_text = item_font.render(item.icon, True, (255, 255, 255))
+        screen.blit(icon_text, (item_x + 8, item_y + 8))
+
+        # Name
+        name_text = item_font.render(item.name, True, (180, 190, 210))
+        screen.blit(name_text, (item_x + 35, item_y + 5))
+
+        # Description (use horror text in late stages)
+        desc = item.get_description(horror_stage)
+        # Truncate if too long
+        if len(desc) > 45:
+            desc = desc[:42] + "..."
+        desc_color = (255, 100, 100) if horror_stage in ("late", "finale") and item.horror_text else (120, 130, 140)
+        desc_text = info_font.render(desc, True, desc_color)
+        screen.blit(desc_text, (item_x + 35, item_y + 28))
+
+        # Category badge
+        cat_text = info_font.render(item.category.value.upper(), True, (80, 100, 120))
+        screen.blit(cat_text, (item_x + col_width - 80, item_y + 5))
+
+        row += 1
+        if row >= items_per_col:
+            row = 0
+            col += 1
+            if col >= 2:
+                break  # Max items displayed
+
+    # Item count
+    count_text = info_font.render(f"Items: {inventory.count()}/{inventory.max_slots}", True, (100, 110, 130))
+    screen.blit(count_text, (panel_x + panel_width - 120, content_y + 15))
+
+
+def _draw_quests_tab(screen, panel_x, content_y, panel_width, content_height,
+                     section_font, item_font, info_font, game_loop):
+    """Draw the Quests tab content."""
+    y = content_y + 15
+
+    # Current Objective
+    screen.blit(section_font.render("CURRENT OBJECTIVE", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 30
 
     phase = game_loop.state.phase
     if phase == GamePhase.TUTORIAL:
@@ -1750,31 +1941,254 @@ def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.f
         quest = "The exit awaits your decision."
         hint = "Stay or go. The choice is yours."
 
-    screen.blit(info_font.render(quest, True, (180, 180, 200)), (panel_x + 40, y_offset))
-    y_offset += 25
-    screen.blit(info_font.render(f"Hint: {hint}", True, (120, 140, 120)), (panel_x + 40, y_offset))
+    # Quest box
+    quest_rect = pygame.Rect(panel_x + 20, y, panel_width - 40, 70)
+    pygame.draw.rect(screen, (40, 45, 55), quest_rect)
+    pygame.draw.rect(screen, (80, 100, 140), quest_rect, 2)
 
-    y_offset += 40
+    screen.blit(item_font.render(quest, True, (200, 210, 230)), (panel_x + 35, y + 12))
+    screen.blit(info_font.render(f"Hint: {hint}", True, (130, 150, 130)), (panel_x + 35, y + 40))
 
-    # Controls reminder
-    screen.blit(section_font.render("CONTROLS", True, (150, 180, 200)), (panel_x + 20, y_offset))
-    y_offset += 30
+    y += 90
+
+    # Progress section
+    screen.blit(section_font.render("PROGRESS", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 30
+
+    # Get available stats from game state
+    active_crimes = len(game_loop.state.crimes) if hasattr(game_loop.state, 'crimes') else 0
+    interventions = getattr(game_loop.state, 'player_interventions', 0)
+
+    progress_items = [
+        f"Current Phase: {phase.name.replace('_', ' ').title()}",
+        f"Anomalies Found: {game_loop.state.anomalies_discovered}/{game_loop.state.anomalies_required}",
+        f"Active Crimes: {active_crimes}",
+        f"Player Interventions: {interventions}",
+    ]
+
+    for item in progress_items:
+        screen.blit(info_font.render(item, True, (140, 150, 160)), (panel_x + 35, y))
+        y += 24
+
+    y += 20
+
+    # Phase progression
+    screen.blit(section_font.render("PHASE PROGRESSION", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 30
+
+    phases = [
+        ("TUTORIAL", GamePhase.TUTORIAL),
+        ("LIVING CITY", GamePhase.LIVING_CITY),
+        ("SOMETHING WRONG", GamePhase.SOMETHING_WRONG),
+        ("EXIT SEARCH", GamePhase.EXIT_SEARCH),
+        ("COMPLETED", GamePhase.COMPLETED),
+    ]
+
+    phase_bar_width = panel_width - 60
+    phase_step = phase_bar_width // len(phases)
+
+    for i, (name, p) in enumerate(phases):
+        px = panel_x + 30 + i * phase_step
+        # Dot
+        if game_loop.state.phase == p:
+            color = (100, 200, 255)
+            pygame.draw.circle(screen, color, (px + phase_step // 2, y + 8), 8)
+        elif game_loop.state.phase.value > p.value:
+            color = (80, 180, 80)
+            pygame.draw.circle(screen, color, (px + phase_step // 2, y + 8), 6)
+        else:
+            color = (60, 60, 70)
+            pygame.draw.circle(screen, color, (px + phase_step // 2, y + 8), 5)
+
+        # Line to next
+        if i < len(phases) - 1:
+            line_color = (80, 180, 80) if game_loop.state.phase.value > p.value else (50, 50, 60)
+            pygame.draw.line(screen, line_color, (px + phase_step // 2 + 10, y + 8),
+                           (px + phase_step - 10, y + 8), 2)
+
+        # Label
+        label = info_font.render(name, True, color)
+        screen.blit(label, (px + phase_step // 2 - label.get_width() // 2, y + 20))
+
+
+def _draw_stats_tab(screen, panel_x, content_y, panel_width, content_height,
+                    section_font, info_font, player, game_loop, plot_state):
+    """Draw the Stats tab content."""
+    y = content_y + 15
+
+    # Player Stats
+    screen.blit(section_font.render("PLAYER", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 30
+
+    stats = [
+        f"Alignment: {player.alignment.upper()}",
+        f"Karma: {player.karma}",
+        f"Health: {player.health}%",
+    ]
+    for stat in stats:
+        screen.blit(info_font.render(stat, True, (140, 150, 160)), (panel_x + 35, y))
+        y += 22
+
+    y += 15
+
+    # Faction Status
+    screen.blit(section_font.render("FACTION STATUS", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 30
+
+    faction_info = [
+        f"Civilians: {'Friendly' if player.karma >= 0 else 'Wary'}",
+        f"Police: {'Allied' if player.karma > 5 else 'Neutral' if player.karma >= -5 else 'Hostile'}",
+        f"Criminals: {'Respected' if player.karma < -5 else 'Distrusted'}",
+    ]
+    for info in faction_info:
+        screen.blit(info_font.render(info, True, (140, 150, 160)), (panel_x + 35, y))
+        y += 22
+
+    y += 15
+
+    # Horror State (if plot_state available)
+    if plot_state:
+        screen.blit(section_font.render("HORROR STATE", True, (150, 180, 200)), (panel_x + 20, y))
+        y += 30
+
+        horror_stats = [
+            f"Stage: {plot_state.get_stage().value.upper()}",
+            f"Awareness: {plot_state.fourth_wall.get_awareness_level():.0%}",
+            f"ESC Presses: {plot_state.fourth_wall.esc_presses}",
+            f"Deaths: {plot_state.fourth_wall.deaths}",
+        ]
+        for stat in horror_stats:
+            screen.blit(info_font.render(stat, True, (140, 150, 160)), (panel_x + 35, y))
+            y += 22
+
+        y += 15
+
+    # Controls reminder (right column)
+    right_x = panel_x + panel_width // 2 + 20
+    right_y = content_y + 15
+
+    screen.blit(section_font.render("CONTROLS", True, (150, 180, 200)), (right_x, right_y))
+    right_y += 30
+
     controls = [
-        "Arrow Keys / Right-Click: Move",
-        "E: Interact with NPC",
-        "Space / Left-Click: Attack",
-        "G/N: Change Alignment",
-        "H: Help Police  |  J: Join Crime",
-        "M: Mute Narrator  |  I: Instructions",
-        "TAB: This menu  |  ESC: Pause/Close",
+        "Arrow Keys / Click: Move",
+        "E: Interact / Enter",
+        "Space / L-Click: Attack",
+        "G/N: Alignment",
+        "H: Help Police",
+        "J: Join Crime",
+        "M: Mute Narrator",
+        "I: Instructions",
+        "B: Enter Building",
+        "TAB: This menu",
+        "ESC: Pause/Close",
     ]
     for ctrl in controls:
-        screen.blit(info_font.render(ctrl, True, (100, 110, 120)), (panel_x + 40, y_offset))
-        y_offset += 20
+        screen.blit(info_font.render(ctrl, True, (100, 110, 120)), (right_x, right_y))
+        right_y += 20
 
-    # Close hint
-    close_text = info_font.render("Press TAB or ESC to close", True, (80, 90, 100))
-    screen.blit(close_text, (panel_x + panel_width // 2 - 80, panel_y + panel_height - 25))
+
+def _draw_log_tab(screen, panel_x, content_y, panel_width, content_height,
+                  section_font, item_font, info_font):
+    """Draw the Event Log tab content."""
+    from event_log import get_event_log, EventType
+
+    y = content_y + 10
+
+    # Title
+    screen.blit(section_font.render("EVENT LOG", True, (150, 180, 200)), (panel_x + 20, y))
+
+    event_log = get_event_log()
+    count_text = info_font.render(f"({event_log.count()} entries)", True, (100, 110, 130))
+    screen.blit(count_text, (panel_x + 130, y + 3))
+
+    y += 30
+
+    # Get recent entries (newest at top)
+    entries = list(reversed(event_log.get_recent(20)))
+
+    if not entries:
+        screen.blit(info_font.render("No events recorded yet.", True, (100, 100, 110)), (panel_x + 30, y))
+        screen.blit(info_font.render("Talk to NPCs and listen to the narrator.", True, (80, 90, 100)), (panel_x + 30, y + 22))
+        return
+
+    # Calculate available space for entries
+    entry_area_height = content_height - 50
+    max_line_width = panel_width - 60
+    line_height = 18
+
+    # Draw entries
+    for entry in entries:
+        if y > content_y + entry_area_height:
+            break
+
+        # Get prefix and color based on event type
+        prefix = entry.get_prefix()
+        color = entry.get_color()
+
+        # Render prefix
+        prefix_surf = info_font.render(prefix, True, color)
+        screen.blit(prefix_surf, (panel_x + 25, y))
+
+        # Render text (may need wrapping)
+        text_x = panel_x + 25 + prefix_surf.get_width() + 8
+        text_max_width = panel_x + panel_width - 25 - text_x
+
+        # Simple word wrap
+        text = entry.text
+        if text_max_width > 100:
+            words = text.split(' ')
+            lines = []
+            current_line = ""
+
+            for word in words:
+                test_line = current_line + (" " if current_line else "") + word
+                test_width = info_font.size(test_line)[0]
+                if test_width <= text_max_width:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = word
+            if current_line:
+                lines.append(current_line)
+
+            # Draw first line
+            if lines:
+                text_surf = info_font.render(lines[0], True, (180, 185, 195))
+                screen.blit(text_surf, (text_x, y))
+                y += line_height
+
+                # Draw continuation lines (indented)
+                for line in lines[1:]:
+                    if y > content_y + entry_area_height:
+                        break
+                    text_surf = info_font.render(line, True, (160, 165, 175))
+                    screen.blit(text_surf, (text_x, y))
+                    y += line_height
+        else:
+            # Just render truncated
+            truncated = text[:40] + "..." if len(text) > 40 else text
+            text_surf = info_font.render(truncated, True, (180, 185, 195))
+            screen.blit(text_surf, (text_x, y))
+            y += line_height
+
+        # Small gap between entries
+        y += 4
+
+    # Legend at bottom
+    legend_y = content_y + content_height - 25
+    legend_items = [
+        ("[Guide]", (180, 160, 120)),
+        ("[NPC]", (120, 180, 220)),
+        ("[Quest]", (100, 200, 100)),
+        ("[Found]", (200, 150, 255)),
+    ]
+    legend_x = panel_x + 25
+    for label, color in legend_items:
+        surf = info_font.render(label, True, color)
+        screen.blit(surf, (legend_x, legend_y))
+        legend_x += surf.get_width() + 20
 
 
 def _register_npcs_with_overlay(overlay, npcs, plot_state):

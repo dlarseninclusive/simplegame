@@ -800,7 +800,7 @@ class CityMap:
                     self.sidewalk_rects.append(rect)
 
     def _render_roads(self):
-        """Pre-render road surface."""
+        """Pre-render road surface with sidewalks, crosswalks, and road markings."""
         cfg = self.config
 
         # Create road surface
@@ -816,6 +816,11 @@ class CityMap:
         cols = cfg.world_width // cell_width + 1
         rows = cfg.world_height // cell_height + 1
 
+        # Colors for road features
+        sidewalk_edge_color = (100, 100, 105)  # Darker sidewalk edge (curb)
+        crosswalk_color = (180, 180, 170)  # Off-white crosswalk stripes
+        dash_gap = 20  # Gap between dashed line segments
+
         # Vertical roads
         for col in range(cols):
             x = col * cell_width
@@ -824,14 +829,46 @@ class CityMap:
                 cfg.road_color,
                 (x, 0, cfg.road_width, cfg.world_height)
             )
-            # Center line
+
+            # Draw sidewalk strips on both sides of road
+            sidewalk_strip_width = 8
+            # Left sidewalk strip
+            pygame.draw.rect(
+                self._road_surface,
+                cfg.sidewalk_color,
+                (x, 0, sidewalk_strip_width, cfg.world_height)
+            )
             pygame.draw.line(
                 self._road_surface,
-                cfg.road_line_color,
-                (x + cfg.road_width // 2, 0),
-                (x + cfg.road_width // 2, cfg.world_height),
-                2
+                sidewalk_edge_color,
+                (x + sidewalk_strip_width, 0),
+                (x + sidewalk_strip_width, cfg.world_height),
+                1
             )
+            # Right sidewalk strip
+            pygame.draw.rect(
+                self._road_surface,
+                cfg.sidewalk_color,
+                (x + cfg.road_width - sidewalk_strip_width, 0, sidewalk_strip_width, cfg.world_height)
+            )
+            pygame.draw.line(
+                self._road_surface,
+                sidewalk_edge_color,
+                (x + cfg.road_width - sidewalk_strip_width - 1, 0),
+                (x + cfg.road_width - sidewalk_strip_width - 1, cfg.world_height),
+                1
+            )
+
+            # Dashed center line (yellow)
+            center_x = x + cfg.road_width // 2
+            for dash_y in range(0, cfg.world_height, dash_gap * 2):
+                pygame.draw.line(
+                    self._road_surface,
+                    cfg.road_line_color,
+                    (center_x, dash_y),
+                    (center_x, min(dash_y + dash_gap, cfg.world_height)),
+                    2
+                )
 
         # Horizontal roads
         for row in range(rows):
@@ -841,16 +878,93 @@ class CityMap:
                 cfg.road_color,
                 (0, y, cfg.world_width, cfg.road_width)
             )
-            # Center line
+
+            # Draw sidewalk strips on both sides of road
+            sidewalk_strip_width = 8
+            # Top sidewalk strip
+            pygame.draw.rect(
+                self._road_surface,
+                cfg.sidewalk_color,
+                (0, y, cfg.world_width, sidewalk_strip_width)
+            )
             pygame.draw.line(
                 self._road_surface,
-                cfg.road_line_color,
-                (0, y + cfg.road_width // 2),
-                (cfg.world_width, y + cfg.road_width // 2),
-                2
+                sidewalk_edge_color,
+                (0, y + sidewalk_strip_width),
+                (cfg.world_width, y + sidewalk_strip_width),
+                1
+            )
+            # Bottom sidewalk strip
+            pygame.draw.rect(
+                self._road_surface,
+                cfg.sidewalk_color,
+                (0, y + cfg.road_width - sidewalk_strip_width, cfg.world_width, sidewalk_strip_width)
+            )
+            pygame.draw.line(
+                self._road_surface,
+                sidewalk_edge_color,
+                (0, y + cfg.road_width - sidewalk_strip_width - 1),
+                (cfg.world_width, y + cfg.road_width - sidewalk_strip_width - 1),
+                1
             )
 
-        # Draw sidewalks
+            # Dashed center line (yellow)
+            center_y = y + cfg.road_width // 2
+            for dash_x in range(0, cfg.world_width, dash_gap * 2):
+                pygame.draw.line(
+                    self._road_surface,
+                    cfg.road_line_color,
+                    (dash_x, center_y),
+                    (min(dash_x + dash_gap, cfg.world_width), center_y),
+                    2
+                )
+
+        # Draw crosswalks at intersections
+        for row in range(rows):
+            for col in range(cols):
+                intersection_x = col * cell_width
+                intersection_y = row * cell_height
+
+                # Crosswalk stripe settings
+                stripe_width = 4
+                stripe_gap = 6
+                crosswalk_margin = 12  # Distance from intersection center
+
+                # Vertical crosswalks (crossing horizontal roads)
+                # Top of intersection
+                for stripe_x in range(intersection_x + crosswalk_margin,
+                                     intersection_x + cfg.road_width - crosswalk_margin,
+                                     stripe_width + stripe_gap):
+                    pygame.draw.rect(
+                        self._road_surface,
+                        crosswalk_color,
+                        (stripe_x, intersection_y + 2, stripe_width, sidewalk_strip_width - 2)
+                    )
+                    pygame.draw.rect(
+                        self._road_surface,
+                        crosswalk_color,
+                        (stripe_x, intersection_y + cfg.road_width - sidewalk_strip_width,
+                         stripe_width, sidewalk_strip_width - 2)
+                    )
+
+                # Horizontal crosswalks (crossing vertical roads)
+                # Left of intersection
+                for stripe_y in range(intersection_y + crosswalk_margin,
+                                     intersection_y + cfg.road_width - crosswalk_margin,
+                                     stripe_width + stripe_gap):
+                    pygame.draw.rect(
+                        self._road_surface,
+                        crosswalk_color,
+                        (intersection_x + 2, stripe_y, sidewalk_strip_width - 2, stripe_width)
+                    )
+                    pygame.draw.rect(
+                        self._road_surface,
+                        crosswalk_color,
+                        (intersection_x + cfg.road_width - sidewalk_strip_width,
+                         stripe_y, sidewalk_strip_width - 2, stripe_width)
+                    )
+
+        # Draw sidewalk network on top (at intersections)
         for rect in self.sidewalk_rects:
             pygame.draw.rect(self._road_surface, cfg.sidewalk_color, rect)
 
