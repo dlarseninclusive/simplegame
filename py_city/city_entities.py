@@ -210,26 +210,8 @@ class Vehicle:
         for ox, oy in offsets:
             pygame.draw.rect(screen, wheel_color, (cx + ox, cy + oy, wheel_w, wheel_h))
 
-        # Type-specific details
-        if self.vehicle_type == VehicleType.POLICE_CAR:
-            # Light bar on top - flashing red and blue
-            light_time = pygame.time.get_ticks()
-            flash_phase = (light_time // 150) % 2
-            # Brighter colors for visibility
-            red_color = (255, 50, 50) if flash_phase == 0 else (150, 30, 30)
-            blue_color = (50, 100, 255) if flash_phase == 1 else (30, 60, 150)
-
-            # Position lights based on orientation
-            if horizontal:
-                # Lights side by side on roof
-                pygame.draw.rect(screen, red_color, (cx - 7, cy - 4, 6, 5), border_radius=1)
-                pygame.draw.rect(screen, blue_color, (cx + 1, cy - 4, 6, 5), border_radius=1)
-            else:
-                # Lights stacked vertically when car is vertical
-                pygame.draw.rect(screen, red_color, (cx - 4, cy - 7, 5, 6), border_radius=1)
-                pygame.draw.rect(screen, blue_color, (cx - 4, cy + 1, 5, 6), border_radius=1)
-
-        elif self.vehicle_type == VehicleType.AMBULANCE:
+        # Type-specific details (police lights drawn last for visibility)
+        if self.vehicle_type == VehicleType.AMBULANCE:
             # Red cross on white
             pygame.draw.rect(screen, (255, 255, 255), (cx - 8, cy - 8, 16, 16))
             pygame.draw.rect(screen, (255, 0, 0), (cx - 2, cy - 6, 4, 12))
@@ -284,6 +266,37 @@ class Vehicle:
             pygame.draw.circle(screen, taillight_color, (cx - w//4, rear_y), 2)
             pygame.draw.circle(screen, taillight_color, (cx + w//4, rear_y), 2)
 
+        # Police car light bar - drawn LAST to ensure visibility on top of everything
+        if self.vehicle_type == VehicleType.POLICE_CAR:
+            light_time = pygame.time.get_ticks()
+            flash_phase = (light_time // 150) % 2
+
+            # Light bar background (black bar across roof)
+            if horizontal:
+                bar_rect = pygame.Rect(cx - 10, cy - 5, 20, 8)
+            else:
+                bar_rect = pygame.Rect(cx - 5, cy - 10, 8, 20)
+            pygame.draw.rect(screen, (20, 20, 25), bar_rect, border_radius=2)
+
+            # Flashing lights - bright and prominent
+            if flash_phase == 0:
+                # Red bright, blue dim
+                red_color = (255, 60, 60)
+                blue_color = (40, 60, 120)
+            else:
+                # Red dim, blue bright
+                red_color = (120, 30, 30)
+                blue_color = (80, 140, 255)
+
+            if horizontal:
+                # Lights side by side on roof
+                pygame.draw.rect(screen, red_color, (cx - 9, cy - 4, 8, 6), border_radius=2)
+                pygame.draw.rect(screen, blue_color, (cx + 1, cy - 4, 8, 6), border_radius=2)
+            else:
+                # Lights stacked vertically when car is vertical
+                pygame.draw.rect(screen, red_color, (cx - 4, cy - 9, 6, 8), border_radius=2)
+                pygame.draw.rect(screen, blue_color, (cx - 4, cy + 1, 6, 8), border_radius=2)
+
 
 class VehicleManager:
     """Manages all vehicles in the city."""
@@ -294,9 +307,10 @@ class VehicleManager:
         self.road_network = road_network
         self.vehicles: List[Vehicle] = []
         self.max_vehicles = 15
-        self.max_parked = 20  # Additional parked vehicles
+        self.max_parked = 20  # Additional parked vehicles on roads
+        self.max_lot_parked = 30  # Vehicles in parking lots
 
-    def spawn_vehicles(self, road_segments: List[Tuple[int, int, int, int]]):
+    def spawn_vehicles(self, road_segments: List[Tuple[int, int, int, int]], parking_lots: List = None):
         """Spawn initial vehicles on road segments."""
         # Spawn moving vehicles
         for _ in range(self.max_vehicles):
@@ -333,6 +347,10 @@ class VehicleManager:
 
         # Spawn parked vehicles along road edges
         self._spawn_parked_vehicles(road_segments)
+
+        # Spawn cars in parking lots
+        if parking_lots:
+            self._spawn_lot_vehicles(parking_lots)
 
     def _spawn_parked_vehicles(self, road_segments: List[Tuple[int, int, int, int]]):
         """Spawn parked cars along the sides of roads."""
@@ -374,6 +392,48 @@ class VehicleManager:
 
                 vehicle = Vehicle(x=x, y=y, vehicle_type=vtype, direction=direction, parked=True)
                 self.vehicles.append(vehicle)
+
+    def _spawn_lot_vehicles(self, parking_lots: List):
+        """Spawn parked cars in parking lots."""
+        if not parking_lots:
+            return
+
+        # Collect all available parking spaces
+        all_spaces = []
+        for lot in parking_lots:
+            for space in lot.parking_spaces:
+                all_spaces.append(space)
+
+        if not all_spaces:
+            return
+
+        # Randomly select spaces to fill (about 60-80% occupancy)
+        random.shuffle(all_spaces)
+        num_to_spawn = min(self.max_lot_parked, int(len(all_spaces) * random.uniform(0.6, 0.8)))
+
+        for i in range(num_to_spawn):
+            if i >= len(all_spaces):
+                break
+
+            x, y, dir_x, dir_y = all_spaces[i]
+
+            # Mostly cars, occasionally trucks and one police car
+            if i == 0 and random.random() < 0.3:
+                # First car might be a police car parked in the lot
+                vtype = VehicleType.POLICE_CAR
+            else:
+                vtype = random.choices(
+                    [VehicleType.CAR, VehicleType.TRUCK],
+                    weights=[90, 10]
+                )[0]
+
+            vehicle = Vehicle(
+                x=x, y=y,
+                vehicle_type=vtype,
+                direction=(dir_x, dir_y),
+                parked=True
+            )
+            self.vehicles.append(vehicle)
 
     def update(self, dt: float):
         """Update all vehicles."""

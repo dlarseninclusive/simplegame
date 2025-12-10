@@ -624,7 +624,7 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     vehicle_manager = VehicleManager(
         city_config.world_width, city_config.world_height, road_network
     )
-    vehicle_manager.spawn_vehicles(road_network.segments)
+    vehicle_manager.spawn_vehicles(road_network.segments, city_map.parking_lots)
 
     # Initialize animal system
     animal_manager = AnimalManager(city_config.world_width, city_config.world_height)
