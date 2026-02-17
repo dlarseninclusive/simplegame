@@ -243,19 +243,20 @@ BUILDING_FLOORS = {
 
 # Items that can be found in each building type (ground floor)
 BUILDING_ITEMS = {
-    "house": ["old_photograph", "torn_note"],
-    "hospital": ["patient_record", "city_map"],
+    "house": ["old_photograph", "torn_note", "brass_compass"],
+    "hospital": ["patient_record", "city_map", "surgeons_gloves"],
     "police_station": ["police_badge"],
-    "bar": [],
+    "bar": ["static_radio"],
     "bank": [],
     "courthouse": [],
 }
 
 # Items found in basements (rarer, more important)
 BASEMENT_ITEMS = {
-    "house": ["basement_key", "broken_watch"],
-    "hospital": ["sedative_vial"],
-    "police_station": ["worn_key", "evidence_photo"],
+    "house": ["basement_key", "broken_watch", "worn_mask", "cracked_mirror"],
+    "hospital": ["sedative_vial", "faded_journal"],
+    "police_station": ["worn_key", "evidence_photo", "skeleton_key"],
+    "courthouse": ["shadow_cloak"],
 }
 
 # Items found on upper floors

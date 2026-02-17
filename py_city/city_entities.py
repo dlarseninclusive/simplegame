@@ -301,10 +301,12 @@ class Vehicle:
 class VehicleManager:
     """Manages all vehicles in the city."""
 
-    def __init__(self, world_width: int, world_height: int, road_network: 'RoadNetwork' = None):
+    def __init__(self, world_width: int, world_height: int, road_network: 'RoadNetwork' = None,
+                 water_check: Callable[[float, float], bool] = None):
         self.world_width = world_width
         self.world_height = world_height
         self.road_network = road_network
+        self.water_check = water_check  # Function to check if position is in water
         self.vehicles: List[Vehicle] = []
         self.max_vehicles = 15
         self.max_parked = 20  # Additional parked vehicles on roads
@@ -312,11 +314,23 @@ class VehicleManager:
 
     def spawn_vehicles(self, road_segments: List[Tuple[int, int, int, int]], parking_lots: List = None):
         """Spawn initial vehicles on road segments."""
+        # Filter road segments to exclude those in water
+        safe_segments = road_segments
+        if self.water_check and road_segments:
+            safe_segments = []
+            for seg in road_segments:
+                x1, y1, x2, y2 = seg
+                # Check both endpoints and midpoint
+                mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+                if not (self.water_check(x1, y1) or self.water_check(x2, y2) or
+                        self.water_check(mid_x, mid_y)):
+                    safe_segments.append(seg)
+
         # Spawn moving vehicles
         for _ in range(self.max_vehicles):
-            if road_segments:
+            if safe_segments:
                 # Pick random road segment
-                x1, y1, x2, y2 = random.choice(road_segments)
+                x1, y1, x2, y2 = random.choice(safe_segments)
                 t = random.random()
                 x = x1 + t * (x2 - x1)
                 y = y1 + t * (y2 - y1)
@@ -345,8 +359,8 @@ class VehicleManager:
 
                 self.vehicles.append(vehicle)
 
-        # Spawn parked vehicles along road edges
-        self._spawn_parked_vehicles(road_segments)
+        # Spawn parked vehicles along road edges (use safe_segments)
+        self._spawn_parked_vehicles(safe_segments if safe_segments else road_segments)
 
         # Spawn cars in parking lots
         if parking_lots:
@@ -398,10 +412,14 @@ class VehicleManager:
         if not parking_lots:
             return
 
-        # Collect all available parking spaces
+        # Collect all available parking spaces (excluding those in water)
         all_spaces = []
         for lot in parking_lots:
             for space in lot.parking_spaces:
+                x, y = space[0], space[1]
+                # Skip spaces in water
+                if self.water_check and self.water_check(x, y):
+                    continue
                 all_spaces.append(space)
 
         if not all_spaces:
@@ -900,6 +918,10 @@ class SpecialBuilding:
         dy = py - self.door_y
         return math.sqrt(dx * dx + dy * dy) < radius
 
+    def get_exit_position(self) -> tuple[float, float]:
+        """Get position just outside the door for exiting the building."""
+        return (self.door_x, self.door_y + 30)
+
     def draw(self, screen: pygame.Surface, camera: 'Camera', highlight: bool = False):
         """Draw the special building."""
         screen_x, screen_y = camera.apply(self.x, self.y)
@@ -1214,6 +1236,11 @@ class RoadNetwork:
     def __init__(self):
         self.nodes: List[RoadNode] = []
         self.segments: List[Tuple[int, int, int, int]] = []
+        self.water_check: Optional[Callable[[float, float], bool]] = None
+
+    def set_water_check(self, water_check: Callable[[float, float], bool]):
+        """Set function to check if a position is in water."""
+        self.water_check = water_check
 
     def build_from_grid(self, world_width: int, world_height: int,
                         block_width: int, block_height: int, road_width: int):
@@ -1279,11 +1306,24 @@ class RoadNetwork:
         visited = {start_node}
 
         for _ in range(length):
-            # Get unvisited connections
+            # Get unvisited connections, avoiding water
             options = [n for n in current.connections if n not in visited]
+
+            # Filter out nodes in water if we have a water check
+            if self.water_check and options:
+                safe_options = [n for n in options
+                               if not self.water_check(n.x, n.y)]
+                if safe_options:
+                    options = safe_options
+
             if not options:
-                # Dead end, allow revisiting
+                # Dead end, allow revisiting but still avoid water
                 options = current.connections
+                if self.water_check:
+                    safe_options = [n for n in options
+                                   if not self.water_check(n.x, n.y)]
+                    if safe_options:
+                        options = safe_options
 
             if options:
                 next_node = random.choice(options)

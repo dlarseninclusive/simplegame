@@ -44,6 +44,24 @@ from city_entities import (
 )
 from interiors import BuildingInterior, InteriorManager, InteriorObject
 
+# Import gear system
+try:
+    from game.gear import GearManager, is_gear_item, GEAR_REGISTRY
+except ImportError:
+    GearManager = None
+
+# Import skills system
+try:
+    from game.skills import SkillManager
+except ImportError:
+    SkillManager = None
+
+# Import hidden factions system
+try:
+    from game.hidden_factions import FactionManager, FactionID, DiscoveryState, FACTIONS
+except ImportError:
+    FactionManager = None
+
 # NPC type to archetype mapping
 NPC_TYPE_TO_ARCHETYPE = {
     "criminal": "mysterious",  # Criminals know something is wrong
@@ -252,9 +270,18 @@ class CityNPC:
         self.wait_timer = random.uniform(0.5, 3.0)  # Stagger initial movement
 
     def _generate_new_path(self):
-        """Generate a new path to a random destination."""
-        # Pick a random sidewalk node as destination
-        if self.city_map.sidewalk_nodes:
+        """Generate a new path to a random destination (avoiding water)."""
+        # Pick a random safe sidewalk node as destination (not in water)
+        safe_nodes = self.city_map.get_safe_sidewalk_nodes()
+        if safe_nodes:
+            dest_node = random.choice(safe_nodes)
+            self.path = self.city_map.find_path(
+                self.x, self.y,
+                dest_node.x, dest_node.y
+            )
+            self.path_index = 0
+        elif self.city_map.sidewalk_nodes:
+            # Fallback
             dest_node = random.choice(self.city_map.sidewalk_nodes)
             self.path = self.city_map.find_path(
                 self.x, self.y,
@@ -291,8 +318,19 @@ class CityNPC:
         else:
             # Move toward waypoint
             speed = self.speed * dt * 60
-            self.x += (dx / dist) * speed
-            self.y += (dy / dist) * speed
+            new_x = self.x + (dx / dist) * speed
+            new_y = self.y + (dy / dist) * speed
+
+            # Check water collision before moving
+            center_x = new_x + self.size / 2
+            center_y = new_y + self.size / 2
+            if self.city_map.is_in_water(center_x, center_y):
+                # Water in the way - reroute
+                self._generate_new_path()
+                return
+
+            self.x = new_x
+            self.y = new_y
 
     def draw(self, screen: pygame.Surface, camera: Camera):
         """Draw NPC with shadow and health bar."""
@@ -380,23 +418,31 @@ class CityPlayer:
         new_x = self.x + dx * move_speed
         new_y = self.y + dy * move_speed
 
-        # Check collision
+        # Check collision with buildings
         new_rect = pygame.Rect(new_x, new_y, self.size, self.size)
-        if not city_map.is_colliding(new_rect):
-            # Wraparound edges (Pac-Man style)
-            if new_x < 0:
-                self.x = self.world_width - self.size
-            elif new_x > self.world_width - self.size:
-                self.x = 0
-            else:
-                self.x = new_x
+        if city_map.is_colliding(new_rect):
+            return  # Can't move into buildings
 
-            if new_y < 0:
-                self.y = self.world_height - self.size
-            elif new_y > self.world_height - self.size:
-                self.y = 0
-            else:
-                self.y = new_y
+        # Check collision with water (center point of player)
+        center_x = new_x + self.size / 2
+        center_y = new_y + self.size / 2
+        if city_map.is_in_water(center_x, center_y):
+            return  # Can't walk into water
+
+        # Wraparound edges (Pac-Man style)
+        if new_x < 0:
+            self.x = self.world_width - self.size
+        elif new_x > self.world_width - self.size:
+            self.x = 0
+        else:
+            self.x = new_x
+
+        if new_y < 0:
+            self.y = self.world_height - self.size
+        elif new_y > self.world_height - self.size:
+            self.y = 0
+        else:
+            self.y = new_y
 
     def draw(self, screen: pygame.Surface, camera: Camera):
         """Draw player with shadow and health bar."""
@@ -557,10 +603,15 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     police = []
     civilians = []
 
-    # Spawn NPCs on sidewalks
+    # Spawn NPCs on sidewalks (avoiding water)
     def spawn_npc_on_sidewalk(sprite, npc_type) -> CityNPC:
-        """Spawn an NPC at a random sidewalk node."""
-        if city_map.sidewalk_nodes:
+        """Spawn an NPC at a random sidewalk node that's not in water."""
+        safe_nodes = city_map.get_safe_sidewalk_nodes()
+        if safe_nodes:
+            node = random.choice(safe_nodes)
+            return CityNPC(node.x, node.y, sprite, npc_type, city_map)
+        elif city_map.sidewalk_nodes:
+            # Fallback to any node if no safe ones
             node = random.choice(city_map.sidewalk_nodes)
             return CityNPC(node.x, node.y, sprite, npc_type, city_map)
         return CityNPC(100, 100, sprite, npc_type, city_map)
@@ -619,10 +670,13 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
         city_config.block_width, city_config.block_height,
         city_config.road_width
     )
+    # Set water check so vehicles avoid driving into the lake
+    road_network.set_water_check(city_map.is_in_water)
 
-    # Initialize vehicle system
+    # Initialize vehicle system (with water check to avoid spawning in lake)
     vehicle_manager = VehicleManager(
-        city_config.world_width, city_config.world_height, road_network
+        city_config.world_width, city_config.world_height, road_network,
+        water_check=city_map.is_in_water
     )
     vehicle_manager.spawn_vehicles(road_network.segments, city_map.parking_lots)
 
@@ -680,6 +734,22 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             # Narrator's reaction after a moment
             if anomaly.narrator_reaction:
                 narrator_queue.queue_line(anomaly.narrator_reaction, priority=False)
+            # Check faction triggers for anomaly discovery
+            if faction_manager:
+                anomaly_id = getattr(anomaly, 'id', anomaly.name.lower().replace(' ', '_'))
+                changes = faction_manager.check_trigger("anomaly", anomaly_id)
+                for faction_id, new_state, narrator_line in changes:
+                    if narrator_line:
+                        narrator_queue.queue_line(narrator_line, priority=True)
+                    overlay.notifications.show_glitch(
+                        f"Something stirs beneath the surface...", 3.0, "top_right"
+                    )
+                # XP for anomaly discovery
+                if skill_manager:
+                    xp, lvl = skill_manager.award_xp(50, "anomaly", anomaly_id)
+                    if lvl:
+                        overlay.notifications.show_glitch(f"Level {skill_manager.ledger.level}!", 3.0, "top_right")
+                        narrator_queue.queue_line(skill_manager.get_level_up_narrator_line(), priority=True)
         except Exception as e:
             print(f"Error showing anomaly notification: {e}")
             # Fallback: just print to console
@@ -693,6 +763,30 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     idle_timer = 0.0
     last_player_pos = (player.x, player.y)
     player_moving = False
+
+    # Gear system
+    gear_manager = GearManager() if GearManager else None
+
+    # Skills/XP system
+    skill_manager = SkillManager() if SkillManager else None
+
+    # Hidden factions system
+    faction_manager = FactionManager() if FactionManager else None
+
+    # Register managers with plot_state for save/load persistence
+    plot_state.gear_manager = gear_manager
+    plot_state.skill_manager = skill_manager
+    plot_state.faction_manager = faction_manager
+    # Reload from save data (plot_state was already loaded, but managers weren't set yet)
+    if gear_manager and "gear" in getattr(plot_state, '_last_loaded_data', {}):
+        gear_manager = GearManager.load(plot_state._last_loaded_data["gear"])
+        plot_state.gear_manager = gear_manager
+    if skill_manager and "skills" in getattr(plot_state, '_last_loaded_data', {}):
+        skill_manager = SkillManager.load(plot_state._last_loaded_data["skills"])
+        plot_state.skill_manager = skill_manager
+    if faction_manager and "factions" in getattr(plot_state, '_last_loaded_data', {}):
+        faction_manager = FactionManager.load(plot_state._last_loaded_data["factions"])
+        plot_state.faction_manager = faction_manager
 
     # Building interior state
     interior_manager = InteriorManager()
@@ -714,7 +808,8 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
     instructions_text = [
         "WASD/Arrows: Move",
         "Right-click: Move to",
-        "E: Talk to NPC",
+        "E: Talk/Enter/Search",
+        "B: Quick exit building",
         "Space/Click: Attack",
         "G: Good | N: Neutral",
         "H: Help police",
@@ -754,7 +849,12 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
     # Status/inventory panel with tabs
     show_status_panel = False
-    status_panel_tab = 0  # 0=Items, 1=Quests, 2=Stats
+    status_panel_tab = 0  # 0=Stats, 1=Gear, 2=Items, 3=Quests, 4=Factions, 5=Log
+
+    # Gear tab cursor state
+    gear_cursor_slot = 0      # 0-5, which slot is selected
+    gear_cursor_side = "slots"  # "slots" or "inventory"
+    gear_inv_cursor = 0       # which inventory item is highlighted
 
     # Click-to-move target (world coordinates)
     move_target = None
@@ -788,7 +888,8 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
             # Handle mouse clicks on status panel tabs
             if show_status_panel and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                tab_rects = _get_status_panel_tab_rects(WIDTH, HEIGHT)
+                _click_num_tabs = 4 + (1 if gear_manager else 0) + (1 if faction_manager else 0)
+                tab_rects = _get_status_panel_tab_rects(WIDTH, HEIGHT, _click_num_tabs)
                 for i, rect in enumerate(tab_rects):
                     if rect.collidepoint(event.pos):
                         status_panel_tab = i
@@ -862,21 +963,63 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             if input_handler.just_pressed(Action.STATUS):
                 show_status_panel = not show_status_panel
 
-            # Tab switching within status panel (1, 2, 3, 4 keys)
+            # Tab switching within status panel (number keys, debounced)
             if show_status_panel:
-                if keys[pygame.K_1]:
-                    status_panel_tab = 0  # Items
-                elif keys[pygame.K_2]:
-                    status_panel_tab = 1  # Quests
-                elif keys[pygame.K_3]:
-                    status_panel_tab = 2  # Stats
-                elif keys[pygame.K_4]:
-                    status_panel_tab = 3  # Log
-                # Also allow left/right arrows to switch tabs
-                if input_handler.just_pressed(Action.MOVE_LEFT):
-                    status_panel_tab = (status_panel_tab - 1) % 4
-                elif input_handler.just_pressed(Action.MOVE_RIGHT):
-                    status_panel_tab = (status_panel_tab + 1) % 4
+                num_tabs = 4 + (1 if gear_manager else 0) + (1 if faction_manager else 0)
+                # Debounce number keys (raw keys[] fires every frame)
+                if not hasattr(run, '_prev_num_keys'):
+                    run._prev_num_keys = {}
+                _num_key_list = [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6]
+                for k_idx, k_key in enumerate(_num_key_list):
+                    pressed_now = keys[k_key]
+                    was_pressed = run._prev_num_keys.get(k_idx, False)
+                    if pressed_now and not was_pressed and k_idx < num_tabs:
+                        status_panel_tab = k_idx
+                    run._prev_num_keys[k_idx] = pressed_now
+                # Gear tab cursor navigation
+                is_gear_tab = (gear_manager and status_panel_tab == 1)
+                if is_gear_tab:
+                    if input_handler.just_pressed(Action.MOVE_UP):
+                        if gear_cursor_side == "slots":
+                            gear_cursor_slot = max(0, gear_cursor_slot - 1)
+                        else:
+                            gear_inv_cursor = max(0, gear_inv_cursor - 1)
+                    elif input_handler.just_pressed(Action.MOVE_DOWN):
+                        if gear_cursor_side == "slots":
+                            gear_cursor_slot = min(5, gear_cursor_slot + 1)
+                        else:
+                            gear_inv_cursor += 1  # Clamped during draw
+                    elif input_handler.just_pressed(Action.MOVE_LEFT):
+                        if gear_cursor_side == "inventory":
+                            gear_cursor_side = "slots"
+                        else:
+                            status_panel_tab = (status_panel_tab - 1) % num_tabs
+                    elif input_handler.just_pressed(Action.MOVE_RIGHT):
+                        if gear_cursor_side == "slots":
+                            gear_cursor_side = "inventory"
+                        else:
+                            status_panel_tab = (status_panel_tab + 1) % num_tabs
+                    # E key: equip/unequip on gear tab
+                    if input_handler.just_pressed(Action.INTERACT):
+                        _gear_tab_interact(gear_manager, plot_state, overlay,
+                                          narrator_queue, faction_manager,
+                                          gear_cursor_side, gear_cursor_slot,
+                                          gear_inv_cursor)
+                else:
+                    # Arrow keys switch tabs on non-gear tabs
+                    if input_handler.just_pressed(Action.MOVE_LEFT):
+                        status_panel_tab = (status_panel_tab - 1) % num_tabs
+                    elif input_handler.just_pressed(Action.MOVE_RIGHT):
+                        status_panel_tab = (status_panel_tab + 1) % num_tabs
+
+            # F key: Equip next available gear item (cycles through slots)
+            if keys[pygame.K_f] and gear_manager:
+                if not getattr(run, '_f_pressed', False):
+                    run._f_pressed = True
+                    # Find next gear item in inventory to equip
+                    _cycle_gear_equip(gear_manager, plot_state, overlay, narrator_queue, faction_manager)
+            elif not keys[pygame.K_f]:
+                run._f_pressed = False
 
             # Dev: Skip phase
             if input_handler.just_pressed(Action.SKIP_PHASE):
@@ -908,6 +1051,18 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                                 if math.sqrt(dx * dx + dy * dy) < 200:
                                     npc.increase_trust(15)
                         overlay.notifications.show_glitch("They notice your help. Trust grows.", 2.0, "top_right")
+                        # XP for helping police
+                        if skill_manager:
+                            xp, lvl = skill_manager.award_xp(20, "help_police")
+                            if lvl:
+                                overlay.notifications.show_glitch(f"Level {skill_manager.ledger.level}!", 3.0, "top_right")
+                                narrator_queue.queue_line(skill_manager.get_level_up_narrator_line(), priority=True)
+                        # Check faction triggers for karma change
+                        if faction_manager:
+                            changes = faction_manager.check_trigger("karma", str(int(player.karma)))
+                            for fid, ns, nl in changes:
+                                if nl:
+                                    narrator_queue.queue_line(nl, priority=True)
                     run._h_pressed = True
             else:
                 run._h_pressed = False
@@ -925,6 +1080,18 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                             if math.sqrt(dx * dx + dy * dy) < 200:
                                 npc.trust = max(-100, npc.trust - 20)
                         overlay.notifications.show_glitch("They saw what you did. They won't forget.", 2.0, "top_right")
+                        # XP for joining crime (same as helping - both paths rewarded)
+                        if skill_manager:
+                            xp, lvl = skill_manager.award_xp(20, "join_crime")
+                            if lvl:
+                                overlay.notifications.show_glitch(f"Level {skill_manager.ledger.level}!", 3.0, "top_right")
+                                narrator_queue.queue_line(skill_manager.get_level_up_narrator_line(), priority=True)
+                        # Check faction triggers for karma change
+                        if faction_manager:
+                            changes = faction_manager.check_trigger("karma", str(int(player.karma)))
+                            for fid, ns, nl in changes:
+                                if nl:
+                                    narrator_queue.queue_line(nl, priority=True)
                     run._j_pressed = True
             else:
                 run._j_pressed = False
@@ -963,6 +1130,15 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                                         "The basement. Where secrets go to hide.",
                                     ]
                                     narrator_queue.queue_line(random.choice(basement_lines))
+                                    # Track basement searches for Architect faction trigger
+                                    if faction_manager:
+                                        changes = faction_manager.increment_action("basements_searched")
+                                        for fid, ns, nl in changes:
+                                            if nl:
+                                                narrator_queue.queue_line(nl, priority=True)
+                                            overlay.notifications.show_glitch(
+                                                "Something stirs beneath the surface...", 3.0, "top_right"
+                                            )
                                 interior_search_cooldown = 0.5
                         elif nearby_obj and nearby_obj.searchable and not nearby_obj.searched:
                             # Search the object
@@ -980,9 +1156,29 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                                     overlay.notifications.show_glitch(
                                         f"Found: {item.name}", 3.0, "top_right"
                                     )
+                                    # Check if it's equippable gear
+                                    if gear_manager and is_gear_item and is_gear_item(item_id):
+                                        overlay.notifications.show_glitch(
+                                            f"Gear item! Open Tab > equip from inventory.", 4.0, "center"
+                                        )
                                     lines = INTERIOR_NARRATOR_LINES.get("item_found", [])
                                     if lines and not overlay.audio.muted:
                                         narrator_queue.queue_line(random.choice(lines))
+                                    # XP for finding items
+                                    if skill_manager:
+                                        xp, lvl = skill_manager.award_xp(15, "item_find", item_id)
+                                        if lvl:
+                                            overlay.notifications.show_glitch(f"Level {skill_manager.ledger.level}!", 3.0, "top_right")
+                                            narrator_queue.queue_line(skill_manager.get_level_up_narrator_line(), priority=True)
+                                    # Check faction triggers for item discovery
+                                    if faction_manager:
+                                        changes = faction_manager.check_trigger("item", item_id)
+                                        for fid, ns, nl in changes:
+                                            if nl:
+                                                narrator_queue.queue_line(nl, priority=True)
+                                            overlay.notifications.show_glitch(
+                                                "Something stirs beneath the surface...", 3.0, "top_right"
+                                            )
                                     # Save state with new item
                                     plot_state.save()
                             else:
@@ -1014,10 +1210,23 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                         lines = BUILDING_NARRATOR_LINES.get(building_type, [])
                         if lines and not overlay.audio.muted:
                             narrator_queue.queue_line(random.choice(lines))
+                        # XP for entering new building type
+                        if skill_manager:
+                            xp, lvl = skill_manager.award_xp(15, "building", f"type_{building_type}")
+                            if lvl:
+                                overlay.notifications.show_glitch(f"Level {skill_manager.ledger.level}!", 3.0, "top_right")
+                                narrator_queue.queue_line(skill_manager.get_level_up_narrator_line(), priority=True)
                     else:
                         # NPC interaction
                         interacted = player.interact(all_npcs)
                         if interacted:
+                            # Apply gear trust modifiers on first interaction
+                            if gear_manager:
+                                trust_mod = gear_manager.get_npc_trust_modifier(
+                                    interacted.type, f"npc_{id(interacted)}"
+                                )
+                                if trust_mod:
+                                    interacted.trust = max(-100, min(100, interacted.trust + trust_mod))
                             npc_id = f"npc_{id(interacted)}"
                             situation = _get_situation(interacted, player, plot_state)
                             if situation == "reveal_secret":
@@ -1027,12 +1236,28 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                             talking_npc = interacted
                             idle_timer = 0.0
                             game_loop.on_player_talked(interacted.type)
+                            # XP for talking to unique NPCs
+                            if skill_manager:
+                                xp, lvl = skill_manager.award_xp(10, "npc_talk", npc_id)
+                                if lvl:
+                                    overlay.notifications.show_glitch(f"Level {skill_manager.ledger.level}!", 3.0, "top_right")
+                                    narrator_queue.queue_line(skill_manager.get_level_up_narrator_line(), priority=True)
+                            # Check faction triggers for NPC trust level
+                            if faction_manager and interacted.trust > 0:
+                                changes = faction_manager.check_trigger("npc_trust", str(int(interacted.trust)))
+                                for fid, ns, nl in changes:
+                                    if nl:
+                                        narrator_queue.queue_line(nl, priority=True)
+                                    overlay.notifications.show_glitch(
+                                        "Something stirs beneath the surface...", 3.0, "top_right"
+                                    )
 
-            # Exit building backup (B key or ESC when inside - main exit is E at door)
+            # B or Q key quick exit from building (backup - main exit is E at door)
             if current_interior is not None:
                 if keys[pygame.K_b] or input_handler.just_pressed(Action.SECONDARY):
-                    # Quick exit (backup for E at door)
                     overlay.notifications.show_glitch("You leave the building.", 1.5, "center")
+                    if current_building:
+                        interior_manager.reset_to_ground(id(current_building))
                     current_interior = None
                     current_building = None
 
@@ -1048,6 +1273,17 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                         pursuing_police, violence_cooldown, total_attacks,
                         overlay, narrator_queue
                     )
+                    # Track attacks for Hollow faction trigger
+                    if faction_manager and attack_result.get("attacked"):
+                        changes = faction_manager.increment_action("npcs_attacked")
+                        for fid, ns, nl in changes:
+                            if nl:
+                                narrator_queue.queue_line(nl, priority=True)
+                        # Also check karma change from attack
+                        changes = faction_manager.check_trigger("karma", str(int(player.karma)))
+                        for fid, ns, nl in changes:
+                            if nl:
+                                narrator_queue.queue_line(nl, priority=True)
 
             # Click-to-move (Right-click)
             click_target = input_handler.get_click_target()
@@ -1078,6 +1314,11 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
             # Player movement via InputHandler (WASD and arrow keys)
             dx, dy = input_handler.get_movement()
+
+            # Prevent movement while status panel is open
+            if show_status_panel:
+                dx, dy = 0, 0
+                move_target = None
 
             # Prevent movement while in jail
             if player_in_jail:
@@ -1406,11 +1647,57 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
                 if not npc.in_jail and not npc.in_building:
                     npc.draw(screen, camera)
 
+            # Draw speech bubble above talking NPC
+            if talking_npc is not None:
+                npc_screen_x, npc_screen_y = camera.apply(talking_npc.x, talking_npc.y)
+                # Only draw if on screen
+                if 0 <= npc_screen_x <= camera.screen_width and 0 <= npc_screen_y <= camera.screen_height:
+                    bubble_font = pygame.font.Font(None, 20)
+                    bubble_text = "..."  # Simple indicator
+                    text_surf = bubble_font.render(bubble_text, True, (40, 40, 50))
+                    bubble_w = text_surf.get_width() + 16
+                    bubble_h = text_surf.get_height() + 10
+                    bubble_x = npc_screen_x + talking_npc.size // 2 - bubble_w // 2
+                    bubble_y = npc_screen_y - bubble_h - 12
+
+                    # Draw bubble background (rounded rect effect)
+                    bubble_surf = pygame.Surface((bubble_w, bubble_h), pygame.SRCALPHA)
+                    pygame.draw.rect(bubble_surf, (255, 255, 255, 230), (0, 0, bubble_w, bubble_h), border_radius=6)
+                    pygame.draw.rect(bubble_surf, (100, 100, 100), (0, 0, bubble_w, bubble_h), 1, border_radius=6)
+                    screen.blit(bubble_surf, (bubble_x, bubble_y))
+
+                    # Draw bubble tail (small triangle pointing down)
+                    tail_points = [
+                        (bubble_x + bubble_w // 2 - 5, bubble_y + bubble_h),
+                        (bubble_x + bubble_w // 2 + 5, bubble_y + bubble_h),
+                        (bubble_x + bubble_w // 2, bubble_y + bubble_h + 8)
+                    ]
+                    pygame.draw.polygon(screen, (255, 255, 255), tail_points)
+                    pygame.draw.lines(screen, (100, 100, 100), False,
+                                     [tail_points[0], tail_points[2], tail_points[1]], 1)
+
+                    # Draw text
+                    screen.blit(text_surf, (bubble_x + 8, bubble_y + 5))
+
             # Draw player
             player.draw(screen, camera)
 
             # Draw special buildings (with highlighting near player)
             special_buildings.draw(screen, camera, player.x, player.y)
+
+            # Draw "[E] Enter" hint if near a building door
+            nearby_building = special_buildings.get_building_near(player.x, player.y)
+            if nearby_building:
+                hint_font = pygame.font.Font(None, 28)
+                hint_surf = hint_font.render(f"[E] Enter {nearby_building.name}", True, (255, 255, 100))
+                door_screen_x, door_screen_y = camera.apply(nearby_building.door_x, nearby_building.door_y)
+                hint_x = door_screen_x - hint_surf.get_width() // 2
+                hint_y = door_screen_y - 40
+                # Background for readability
+                hint_bg = pygame.Surface((hint_surf.get_width() + 10, hint_surf.get_height() + 6), pygame.SRCALPHA)
+                hint_bg.fill((0, 0, 0, 150))
+                screen.blit(hint_bg, (hint_x - 5, hint_y - 3))
+                screen.blit(hint_surf, (hint_x, hint_y))
 
             # Draw investigation clues
             investigation.draw_clues(screen, camera)
@@ -1451,21 +1738,27 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
             f"Karma: {player.karma:.0f}",
             f"Alignment: {player.alignment}",
         ]
+        if skill_manager:
+            cur_xp, next_xp = skill_manager.get_xp_for_next_level()
+            stats.append(f"Lv.{skill_manager.ledger.level} XP:{cur_xp}/{next_xp}")
         for i, stat in enumerate(stats):
             text_surface = font.render(stat, True, WHITE)
             screen.blit(text_surface, (12, 12 + i * 24))
 
         # Wanted status indicator (below stats)
         if player_in_jail:
-            # Jail indicator
-            jail_bg = pygame.Surface((180, 50))
+            # Jail indicator with health restoration
+            jail_bg = pygame.Surface((180, 70))
             jail_bg.set_alpha(200)
             jail_bg.fill((80, 40, 40))
             screen.blit(jail_bg, (5, 190))
             jail_text = font.render("IN JAIL", True, (255, 100, 100))
             screen.blit(jail_text, (12, 195))
             timer_text = small_font.render(f"Release in: {int(jail_timer)}s", True, (200, 150, 150))
-            screen.blit(timer_text, (12, 220))
+            screen.blit(timer_text, (12, 218))
+            # Health restoration indicator
+            health_text = small_font.render(f"Health: {int(player.health)}% (healing)", True, (150, 200, 150))
+            screen.blit(health_text, (12, 238))
         elif player_wanted:
             # Wanted indicator with flashing effect
             flash = int(abs(math.sin(time.time() * 4)) * 80)
@@ -1543,7 +1836,9 @@ def run(screen, clock, guide, scene_slug, tone, input_handler=None, overlay=None
 
         # Draw status panel if open
         if show_status_panel:
-            _draw_status_panel(screen, player, game_loop, font, status_panel_tab, plot_state)
+            _draw_status_panel(screen, player, game_loop, font, status_panel_tab, plot_state,
+                               gear_manager, faction_manager,
+                               gear_cursor_slot, gear_cursor_side, gear_inv_cursor)
 
         # Draw shared menus
         pause_menu.draw(screen)
@@ -1749,21 +2044,23 @@ def _draw_exit_menu(screen: pygame.Surface, options: list, selection: int, font:
     screen.blit(inst_text, inst_rect)
 
 
-def _get_status_panel_tab_rects(screen_width: int, screen_height: int) -> list[pygame.Rect]:
+def _get_status_panel_tab_rects(screen_width: int, screen_height: int,
+                                num_tabs: int = 6) -> list[pygame.Rect]:
     """Get the tab rectangles for click detection."""
     panel_width = 650
     panel_x = (screen_width - panel_width) // 2
     panel_y = (screen_height - 480) // 2
-    tab_width = panel_width // 4
+    tab_width = panel_width // num_tabs
 
     return [
         pygame.Rect(panel_x + i * tab_width, panel_y, tab_width, 40)
-        for i in range(4)
+        for i in range(num_tabs)
     ]
 
 
 def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.font.Font,
-                       active_tab: int = 0, plot_state=None):
+                       active_tab: int = 0, plot_state=None, gear_manager=None, faction_manager=None,
+                       gear_cursor_slot=0, gear_cursor_side="slots", gear_inv_cursor=0):
     """Draw the tabbed status/inventory panel (Tab menu)."""
     # Semi-transparent overlay
     overlay_surf = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
@@ -1789,9 +2086,16 @@ def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.f
     info_font = pygame.font.Font(None, 20)
     item_font = pygame.font.Font(None, 22)
 
-    # Draw tabs at top (clickable)
-    tab_names = ["[1] ITEMS", "[2] QUESTS", "[3] STATS", "[4] LOG"]
-    tab_width = panel_width // 4
+    # Build tab list dynamically
+    tab_names = ["[1] STATS"]
+    if gear_manager:
+        tab_names.append(f"[{len(tab_names) + 1}] GEAR")
+    tab_names.append(f"[{len(tab_names) + 1}] ITEMS")
+    tab_names.append(f"[{len(tab_names) + 1}] QUESTS")
+    if faction_manager:
+        tab_names.append(f"[{len(tab_names) + 1}] FACTIONS")
+    tab_names.append(f"[{len(tab_names) + 1}] LOG")
+    tab_width = panel_width // len(tab_names)
     for i, tab_name in enumerate(tab_names):
         tab_x = panel_x + i * tab_width
         tab_rect = pygame.Rect(tab_x, panel_y, tab_width, 40)
@@ -1820,25 +2124,42 @@ def _draw_status_panel(screen: pygame.Surface, player, game_loop, font: pygame.f
     content_height = panel_height - 80
 
     # Draw content based on active tab
-    if active_tab == 0:
-        # ITEMS TAB
-        _draw_items_tab(screen, panel_x, content_y, panel_width, content_height,
-                        section_font, item_font, info_font, plot_state)
-    elif active_tab == 1:
-        # QUESTS TAB
-        _draw_quests_tab(screen, panel_x, content_y, panel_width, content_height,
-                         section_font, item_font, info_font, game_loop)
-    elif active_tab == 2:
-        # STATS TAB
+    # Tab order: 0=Stats, 1=Gear, 2=Items, 3=Quests, 4=Factions, 5=Log
+    # Gear/Factions tabs shift indices when their managers are absent
+    tab_content_map = ["stats"]
+    if gear_manager:
+        tab_content_map.append("gear")
+    tab_content_map.append("items")
+    tab_content_map.append("quests")
+    if faction_manager:
+        tab_content_map.append("factions")
+    tab_content_map.append("log")
+
+    content_id = tab_content_map[active_tab] if active_tab < len(tab_content_map) else "stats"
+
+    if content_id == "stats":
         _draw_stats_tab(screen, panel_x, content_y, panel_width, content_height,
                         section_font, info_font, player, game_loop, plot_state)
-    else:
-        # LOG TAB
+    elif content_id == "gear":
+        _draw_gear_tab(screen, panel_x, content_y, panel_width, content_height,
+                       section_font, item_font, info_font, plot_state, gear_manager,
+                       gear_cursor_slot, gear_cursor_side, gear_inv_cursor)
+    elif content_id == "items":
+        _draw_items_tab(screen, panel_x, content_y, panel_width, content_height,
+                        section_font, item_font, info_font, plot_state)
+    elif content_id == "quests":
+        _draw_quests_tab(screen, panel_x, content_y, panel_width, content_height,
+                         section_font, item_font, info_font, game_loop)
+    elif content_id == "factions":
+        _draw_factions_tab(screen, panel_x, content_y, panel_width, content_height,
+                           section_font, item_font, info_font, faction_manager)
+    elif content_id == "log":
         _draw_log_tab(screen, panel_x, content_y, panel_width, content_height,
                       section_font, item_font, info_font)
 
     # Close hint at bottom
-    close_text = info_font.render("TAB/ESC: Close  |  1-4 or Arrow Keys: Switch tabs", True, (80, 90, 100))
+    num_tab_keys = len(tab_names)
+    close_text = info_font.render(f"TAB/ESC: Close  |  1-{num_tab_keys} or Arrow Keys: Switch tabs", True, (80, 90, 100))
     screen.blit(close_text, (panel_x + panel_width // 2 - close_text.get_width() // 2, panel_y + panel_height - 22))
 
 
@@ -2259,6 +2580,342 @@ def _generate_name(npc_type):
     return fallback
 
 
+def _cycle_gear_equip(gear_manager, plot_state, overlay, narrator_queue, faction_manager=None):
+    """Cycle through gear items in inventory and equip the next one."""
+    try:
+        from game.gear import is_gear_item, GEAR_REGISTRY, GearSlot
+    except ImportError:
+        return
+
+    # Get all gear items in inventory
+    gear_items = [item for item in plot_state.inventory.items if is_gear_item(item.id)]
+    if not gear_items:
+        overlay.notifications.show_glitch("No gear items in inventory.", 1.5, "center")
+        return
+
+    # Find first unequipped gear item
+    equipped_ids = set(v for v in gear_manager.slots.values() if v)
+    for item in gear_items:
+        if item.id not in equipped_ids:
+            narrator_line = gear_manager.equip(item.id)
+            overlay.notifications.show_glitch(f"Equipped: {item.name}", 2.0, "center")
+            if narrator_line and narrator_queue:
+                narrator_queue.queue_line(narrator_line, priority=True)
+            # Check faction triggers for gear equip
+            if faction_manager:
+                changes = faction_manager.check_trigger("gear", item.id)
+                for fid, ns, nl in changes:
+                    if nl:
+                        narrator_queue.queue_line(nl, priority=True)
+                    overlay.notifications.show_glitch(
+                        "Something stirs beneath the surface...", 3.0, "top_right"
+                    )
+            return
+
+    # All gear equipped - unequip the first slot that has something
+    for slot in GearSlot:
+        if gear_manager.slots[slot]:
+            narrator_line = gear_manager.unequip(slot)
+            overlay.notifications.show_glitch(f"Unequipped {slot.value} slot.", 2.0, "center")
+            if narrator_line and narrator_queue:
+                narrator_queue.queue_line(narrator_line)
+            return
+
+
+def _draw_gear_tab(screen, panel_x, content_y, panel_width, content_height,
+                   section_font, item_font, info_font, plot_state, gear_manager,
+                   cursor_slot=0, cursor_side="slots", inv_cursor=0):
+    """Draw the Gear tab with Diablo-style visual equipment slots."""
+    if not gear_manager:
+        screen.blit(section_font.render("GEAR (unavailable)", True, (100, 100, 100)),
+                    (panel_x + 20, content_y + 15))
+        return
+
+    try:
+        from game.gear import GearSlot, GEAR_REGISTRY, SLOT_LABELS, is_gear_item
+    except ImportError:
+        screen.blit(section_font.render("GEAR (loading...)", True, (100, 100, 100)),
+                    (panel_x + 20, content_y + 15))
+        return
+
+    # Layout constants
+    slot_w, slot_h = 90, 70
+    gap = 12
+    slots_x = panel_x + 25          # Left column for equipment slots
+    inv_x = panel_x + 310           # Right column for inventory
+    inv_w = panel_width - 330       # Inventory panel width
+
+    # Slot positions (2 columns: left=body, right=weapon/accessory, centered for head/hidden)
+    slot_list = list(GearSlot)
+    slot_positions = [
+        (slots_x + 55, content_y + 10),                         # HEAD (centered)
+        (slots_x, content_y + 10 + slot_h + gap),               # BODY (left)
+        (slots_x + slot_w + gap + 20, content_y + 10 + slot_h + gap),  # WEAPON (right)
+        (slots_x, content_y + 10 + 2 * (slot_h + gap)),         # HANDS (left)
+        (slots_x + slot_w + gap + 20, content_y + 10 + 2 * (slot_h + gap)),  # ACCESSORY (right)
+        (slots_x + 55, content_y + 10 + 3 * (slot_h + gap)),    # HIDDEN (centered)
+    ]
+
+    # Pulse animation for selected slot
+    pulse = int(15 * math.sin(time.time() * 4))
+
+    # Draw each equipment slot
+    for i, slot in enumerate(slot_list):
+        sx, sy = slot_positions[i]
+        gear = gear_manager.get_equipped(slot)
+        is_selected = (cursor_side == "slots" and cursor_slot == i)
+
+        # Slot background
+        bg_color = (35, 38, 48) if not gear else (30, 45, 35)
+        slot_surf = pygame.Surface((slot_w, slot_h), pygame.SRCALPHA)
+        pygame.draw.rect(slot_surf, bg_color, (0, 0, slot_w, slot_h), border_radius=4)
+        screen.blit(slot_surf, (sx, sy))
+
+        # Slot border (bright if selected)
+        if is_selected:
+            border_color = (80 + pulse, 120 + pulse, 180 + pulse)
+            border_width = 2
+        elif gear:
+            border_color = (60, 80, 60)
+            border_width = 1
+        else:
+            border_color = (50, 55, 65)
+            border_width = 1
+        pygame.draw.rect(screen, border_color, (sx, sy, slot_w, slot_h), border_width, border_radius=4)
+
+        # Slot label at top
+        label = SLOT_LABELS[slot]
+        label_color = (120, 140, 170) if is_selected else (80, 90, 105)
+        label_surf = info_font.render(label, True, label_color)
+        screen.blit(label_surf, (sx + (slot_w - label_surf.get_width()) // 2, sy + 3))
+
+        if gear:
+            # Item name (and icon if available)
+            item = plot_state.inventory.get(gear.item_id) if plot_state else None
+            name = item.name if item else gear.item_id
+            icon = item.icon if item and hasattr(item, 'icon') else ""
+            # Truncate long names
+            display_name = name if len(name) <= 12 else name[:11] + "."
+            if icon:
+                icon_surf = info_font.render(icon, True, (200, 200, 200))
+                screen.blit(icon_surf, (sx + (slot_w - icon_surf.get_width()) // 2, sy + 20))
+            name_color = (180, 200, 150) if is_selected else (140, 160, 120)
+            name_surf = info_font.render(display_name, True, name_color)
+            screen.blit(name_surf, (sx + (slot_w - name_surf.get_width()) // 2, sy + 40))
+
+            # Show effect tag below name
+            tags = ", ".join(e.tag for e in gear.effects)
+            if len(tags) > 14:
+                tags = tags[:13] + "."
+            tag_surf = pygame.font.Font(None, 16).render(tags, True, (90, 100, 110))
+            screen.blit(tag_surf, (sx + (slot_w - tag_surf.get_width()) // 2, sy + 55))
+        else:
+            # Empty slot indicator
+            empty_surf = info_font.render("---", True, (50, 55, 65))
+            screen.blit(empty_surf, (sx + (slot_w - empty_surf.get_width()) // 2, sy + 32))
+
+    # Divider line
+    div_x = inv_x - 15
+    pygame.draw.line(screen, (50, 55, 65), (div_x, content_y + 10),
+                     (div_x, content_y + content_height - 30), 1)
+
+    # Inventory panel header
+    inv_header_color = (150, 180, 200) if cursor_side == "inventory" else (100, 110, 130)
+    screen.blit(section_font.render("INVENTORY", True, inv_header_color), (inv_x, content_y + 10))
+    inv_y = content_y + 38
+
+    # Get available (unequipped) gear items
+    available = []
+    if plot_state:
+        equipped_ids = set(v for v in gear_manager.slots.values() if v)
+        for item in plot_state.inventory.items:
+            if is_gear_item(item.id) and item.id not in equipped_ids:
+                available.append(item)
+
+    if not available:
+        screen.blit(info_font.render("No unequipped gear.", True, (70, 70, 80)), (inv_x, inv_y))
+    else:
+        max_visible = (content_height - 80) // 22
+        for idx, item in enumerate(available):
+            if idx >= max_visible:
+                break
+            gear_def = GEAR_REGISTRY.get(item.id)
+            slot_name = SLOT_LABELS.get(gear_def.slot, "?") if gear_def else "?"
+            is_inv_selected = (cursor_side == "inventory" and inv_cursor == idx)
+
+            if is_inv_selected:
+                # Highlight row
+                highlight = pygame.Surface((inv_w, 20), pygame.SRCALPHA)
+                pygame.draw.rect(highlight, (40, 50, 70, 180), (0, 0, inv_w, 20), border_radius=3)
+                screen.blit(highlight, (inv_x - 4, inv_y - 2))
+                text_color = (200, 220, 255)
+                cursor_marker = "> "
+            else:
+                text_color = (140, 150, 165)
+                cursor_marker = "  "
+
+            icon = item.icon if hasattr(item, 'icon') else ""
+            line = f"{cursor_marker}{icon} {item.name}"
+            screen.blit(item_font.render(line, True, text_color), (inv_x, inv_y))
+            # Slot type hint on the right
+            slot_hint = info_font.render(f"({slot_name})", True, (80, 90, 100))
+            screen.blit(slot_hint, (inv_x + inv_w - slot_hint.get_width() - 5, inv_y + 2))
+            inv_y += 22
+
+    # Controls hint at bottom
+    hint_y = content_y + content_height - 25
+    hint_text = "W/S: Navigate   A/D: Slots/Inventory   E: Equip/Unequip   F: Quick-cycle"
+    hint_surf = info_font.render(hint_text, True, (70, 80, 95))
+    screen.blit(hint_surf, (panel_x + (panel_width - hint_surf.get_width()) // 2, hint_y))
+
+
+def _gear_tab_interact(gear_manager, plot_state, overlay, narrator_queue,
+                       faction_manager, cursor_side, cursor_slot, inv_cursor):
+    """Handle E key press on gear tab - equip from inventory or unequip from slot."""
+    try:
+        from game.gear import GearSlot, GEAR_REGISTRY, is_gear_item
+    except ImportError:
+        return
+
+    slot_list = list(GearSlot)
+
+    if cursor_side == "slots":
+        # Unequip whatever is in the selected slot
+        if cursor_slot < len(slot_list):
+            slot = slot_list[cursor_slot]
+            if gear_manager.slots[slot]:
+                narrator_line = gear_manager.unequip(slot)
+                overlay.notifications.show_glitch(f"Unequipped {slot.value} slot.", 2.0, "center")
+                if narrator_line and narrator_queue:
+                    narrator_queue.queue_line(narrator_line)
+            else:
+                # Empty slot - try to auto-equip first matching item from inventory
+                equipped_ids = set(v for v in gear_manager.slots.values() if v)
+                for item in plot_state.inventory.items:
+                    if is_gear_item(item.id) and item.id not in equipped_ids:
+                        gear_def = GEAR_REGISTRY.get(item.id)
+                        if gear_def and gear_def.slot == slot:
+                            narrator_line = gear_manager.equip(item.id)
+                            overlay.notifications.show_glitch(f"Equipped: {item.name}", 2.0, "center")
+                            if narrator_line and narrator_queue:
+                                narrator_queue.queue_line(narrator_line, priority=True)
+                            if faction_manager:
+                                changes = faction_manager.check_trigger("gear", item.id)
+                                for fid, ns, nl in changes:
+                                    if nl:
+                                        narrator_queue.queue_line(nl, priority=True)
+                            break
+    else:
+        # Inventory side - equip selected item
+        equipped_ids = set(v for v in gear_manager.slots.values() if v)
+        available = [item for item in plot_state.inventory.items
+                     if is_gear_item(item.id) and item.id not in equipped_ids]
+        if inv_cursor < len(available):
+            item = available[inv_cursor]
+            narrator_line = gear_manager.equip(item.id)
+            overlay.notifications.show_glitch(f"Equipped: {item.name}", 2.0, "center")
+            if narrator_line and narrator_queue:
+                narrator_queue.queue_line(narrator_line, priority=True)
+            if faction_manager:
+                changes = faction_manager.check_trigger("gear", item.id)
+                for fid, ns, nl in changes:
+                    if nl:
+                        narrator_queue.queue_line(nl, priority=True)
+
+
+def _draw_factions_tab(screen, panel_x, content_y, panel_width, content_height,
+                       section_font, item_font, info_font, faction_manager):
+    """Draw the Factions tab showing discovered hidden factions."""
+    y = content_y + 15
+
+    if not faction_manager:
+        screen.blit(section_font.render("FACTIONS (unavailable)", True, (100, 100, 100)),
+                    (panel_x + 20, y))
+        return
+
+    # Title
+    screen.blit(section_font.render("HIDDEN FACTIONS", True, (150, 180, 200)), (panel_x + 20, y))
+    y += 30
+
+    known = faction_manager.get_known_factions()
+    if not known:
+        screen.blit(item_font.render("  No factions discovered yet.", True, (80, 80, 90)),
+                    (panel_x + 20, y))
+        y += 25
+        screen.blit(info_font.render("  Explore the city. Search basements. Find anomalies.", True, (100, 110, 130)),
+                    (panel_x + 20, y))
+        y += 20
+        screen.blit(info_font.render("  The truth hides beneath the surface.", True, (100, 110, 130)),
+                    (panel_x + 20, y))
+        return
+
+    # State colors
+    state_colors = {
+        "rumored": (120, 100, 150),
+        "discovered": (150, 150, 200),
+        "joined": (180, 200, 150),
+        "allied": (200, 220, 100),
+    }
+
+    for faction_id in known:
+        if y > content_y + content_height - 60:
+            break
+
+        faction = FACTIONS[faction_id]
+        state = faction_manager.get_state(faction_id)
+        color = state_colors.get(state.value, (150, 150, 150))
+
+        # Faction name and state
+        if state == DiscoveryState.RUMORED:
+            # Only show hints, not the full name
+            screen.blit(item_font.render(f"  ??? - Rumors", True, (120, 100, 150)),
+                        (panel_x + 20, y))
+            y += 20
+            screen.blit(info_font.render(f"    \"{faction.motto}\"", True, (100, 90, 120)),
+                        (panel_x + 20, y))
+            y += 18
+            # Show progress bar
+            progress = faction_manager.progress[faction_id]
+            bar_w = 200
+            bar_h = 8
+            bar_x = panel_x + 40
+            pygame.draw.rect(screen, (40, 40, 50), (bar_x, y, bar_w, bar_h))
+            fill = min(bar_w, int(bar_w * progress / faction.discover_threshold))
+            pygame.draw.rect(screen, (100, 80, 140), (bar_x, y, fill, bar_h))
+            screen.blit(info_font.render(f"  {progress}/{faction.discover_threshold}", True, (80, 80, 100)),
+                        (bar_x + bar_w + 8, y - 3))
+            y += 20
+        else:
+            # Full info for discovered+ factions
+            state_label = state.value.upper()
+            screen.blit(item_font.render(f"  {faction.name} [{state_label}]", True, color),
+                        (panel_x + 20, y))
+            y += 20
+            screen.blit(info_font.render(f"    \"{faction.motto}\"", True, (100, 110, 130)),
+                        (panel_x + 20, y))
+            y += 18
+
+            # Quest info if joined
+            if state in (DiscoveryState.JOINED, DiscoveryState.ALLIED) and faction.quest:
+                current, target = faction_manager.get_quest_progress(faction_id)
+                if state == DiscoveryState.ALLIED:
+                    screen.blit(info_font.render(f"    Quest: {faction.quest.name} [COMPLETE]", True, (150, 200, 100)),
+                                (panel_x + 20, y))
+                else:
+                    screen.blit(info_font.render(f"    Quest: {faction.quest.name} ({current}/{target})", True, (180, 180, 150)),
+                                (panel_x + 20, y))
+                y += 18
+
+        y += 12
+
+    # Show unknown count hint
+    unknown_count = 3 - len(known)
+    if unknown_count > 0:
+        y += 10
+        screen.blit(info_font.render(f"  {unknown_count} faction{'s' if unknown_count > 1 else ''} remain hidden...", True, (70, 70, 80)),
+                    (panel_x + 20, y))
+
+
 def _do_attack(player, all_npcs, overlay, game_loop, narrator_queue):
     """
     Handle attack action - damages nearby NPCs.
@@ -2426,6 +3083,11 @@ def _update_police_pursuit(dt, player, police, player_wanted, wanted_level,
     # Handle jail time
     if player_in_jail:
         jail_timer -= dt
+
+        # Gradually restore health while in jail (10 health per second)
+        if player.health < 100:
+            player.health = min(100, player.health + 10 * dt)
+
         if jail_timer <= 0:
             # Release from jail
             player_in_jail = False
@@ -2434,18 +3096,19 @@ def _update_police_pursuit(dt, player, police, player_wanted, wanted_level,
             wanted_level = 0
             pursuing_police = []
 
+            # Full health on release
+            player.health = 100
+
             # Teleport player out of jail
             if special_buildings and special_buildings.jail:
-                jail = special_buildings.jail
-                player.x = jail.x + jail.width + 50
-                player.y = jail.y + jail.height // 2
+                player.x, player.y = special_buildings.jail.get_exit_position()
 
             # Narrator comment on release
             lines = VIOLENCE_NARRATOR_LINES.get("jail_release", [])
             if lines:
                 narrator_queue.queue_line(random.choice(lines))
 
-            overlay.notifications.show_glitch("Released.", 2.0, "center")
+            overlay.notifications.show_glitch("Released. Health restored.", 2.0, "center")
 
         return (player_wanted, wanted_level, pursuing_police,
                 player_in_jail, jail_timer, violence_cooldown)

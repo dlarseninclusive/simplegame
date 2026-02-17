@@ -50,13 +50,14 @@ class DayNightCycle:
             TimeOfDay.NIGHT: (100, 120, 180),     # Cool blue
         }
 
-        # Darkness overlay alpha for different times
+        # Darkness overlay alpha for different times (0-255)
+        # Higher values = darker
         self.darkness_alpha = {
-            TimeOfDay.DAWN: 30,
-            TimeOfDay.MORNING: 0,
-            TimeOfDay.AFTERNOON: 0,
-            TimeOfDay.EVENING: 40,
-            TimeOfDay.NIGHT: 120,
+            TimeOfDay.DAWN: 50,       # Light blue tint
+            TimeOfDay.MORNING: 0,      # Full daylight
+            TimeOfDay.AFTERNOON: 0,    # Full daylight
+            TimeOfDay.EVENING: 70,     # Getting dark
+            TimeOfDay.NIGHT: 160,      # Quite dark
         }
 
     def update(self, dt: float) -> Optional[str]:
@@ -991,31 +992,56 @@ class CityMap:
         self._render_roads()
 
     def _generate_lake(self, cols: int, rows: int, cell_width: int, cell_height: int, cfg):
-        """Generate a lake with a bridge crossing it."""
-        # Place lake in a random area (not too close to edges)
-        lake_col = random.randint(2, max(3, cols - 4))
-        lake_row = random.randint(2, max(3, rows - 4))
+        """Generate a lake with a bridge crossing it, aligned to the road grid.
 
-        # Lake spans 2-3 cells wide and 3-4 cells tall (or vice versa)
+        The lake replaces city blocks (green areas) and the internal roads between them.
+        Roads around the perimeter of the lake remain intact.
+        A bridge crosses horizontally through the middle, connecting the roads on either side.
+        """
+        # Place lake in a random area (not too close to edges)
+        # Lake position is the TOP-LEFT corner in grid cells
+        lake_col = random.randint(2, max(3, cols - 5))
+        lake_row = random.randint(2, max(3, rows - 5))
+
+        # Lake spans 2-3 cells wide and 3-4 cells tall
         lake_width_cells = random.randint(2, 3)
         lake_height_cells = random.randint(3, 4)
 
-        # Calculate lake position and size
-        lake_x = lake_col * cell_width
-        lake_y = lake_row * cell_height
-        lake_width = lake_width_cells * cell_width - cfg.road_width // 2
-        lake_height = lake_height_cells * cell_height - cfg.road_width // 2
+        # Grid layout:
+        # Each "cell" = block_width + road_width
+        # Roads are at cell boundaries (from x to x + road_width)
+        # Blocks are after roads (from x + road_width to x + cell_width)
+        #
+        # To make lake align with roads:
+        # Lake LEFT edge = just after the left road (lake_col * cell_width + road_width)
+        # Lake RIGHT edge = just before the right road ((lake_col + width_cells) * cell_width)
+        # This means lake width = width_cells * cell_width - road_width
+
+        lake_x = lake_col * cell_width + cfg.road_width  # Start after the road
+        lake_y = lake_row * cell_height + cfg.road_width  # Start after the road
+
+        # Lake spans from after left road to just before right road
+        lake_width = lake_width_cells * cell_width - cfg.road_width
+        lake_height = lake_height_cells * cell_height - cfg.road_width
 
         # Create the lake
         lake = WaterBody(lake_x, lake_y, lake_width, lake_height)
         self.water_bodies.append(lake)
 
-        # Add a bridge across the lake (horizontal bridge through middle)
-        bridge_y = lake_y + lake_height // 2 - cfg.road_width // 2
+        # Add a bridge across the lake
+        # The bridge should be at an existing road Y position that would cut through the lake
+        # Roads are at: row * cell_height (top edge of road)
+        # Pick the middle row within the lake span
+        bridge_row = lake_row + lake_height_cells // 2
+        bridge_y = bridge_row * cell_height  # Top edge of the road
+
+        # Bridge spans the full width of the lake, connecting roads on both sides
+        # It needs to go from the road on the left (which ends at lake_x) to
+        # the road on the right (which starts at lake_x + lake_width)
         bridge = Bridge(
-            lake_x - 20,  # Extend slightly beyond lake
+            lake_x,  # Start at lake left edge
             bridge_y,
-            lake_width + 40,
+            lake_width,  # Span full lake width
             cfg.road_width,
             is_horizontal=True
         )
@@ -1310,6 +1336,27 @@ class CityMap:
                 return True
         return False
 
+    def is_in_water(self, x: float, y: float, margin: int = 0) -> bool:
+        """Check if a position is in water (not on a bridge)."""
+        point_rect = pygame.Rect(x - margin, y - margin, margin * 2 + 1, margin * 2 + 1)
+
+        # First check if on a bridge (bridges are over water but walkable)
+        for bridge in self.bridges:
+            if bridge.rect.collidepoint(x, y):
+                return False  # On bridge, not in water
+
+        # Check if in any water body
+        for water in self.water_bodies:
+            if water.rect.collidepoint(x, y):
+                return True
+
+        return False
+
+    def get_safe_sidewalk_nodes(self) -> list:
+        """Get sidewalk nodes that are not in water."""
+        return [node for node in self.sidewalk_nodes
+                if not self.is_in_water(node.x, node.y)]
+
     def update(self, dt: float, lit_chance: float = 0.6):
         """Update city state including windows and water animation."""
         self.time += dt
@@ -1403,7 +1450,9 @@ class CityMap:
                     block.draw_at_offset(screen, camera, self.config.world_width, self.config.world_height, darkness_alpha)
 
         # Apply overall darkness overlay for night
-        if darkness_alpha > 20:
+        # This creates the day/night visual effect
+        if darkness_alpha > 0:
             overlay = pygame.Surface((camera.screen_width, camera.screen_height), pygame.SRCALPHA)
-            overlay.fill((20, 25, 50, darkness_alpha // 2))
+            # Use a blue-ish dark tint for night atmosphere
+            overlay.fill((15, 20, 40, darkness_alpha))
             screen.blit(overlay, (0, 0))
