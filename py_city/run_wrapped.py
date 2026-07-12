@@ -1267,6 +1267,22 @@ def run(screen, clock, guide, scene_slug, tone):
     plot_state.save()
     print(f"Game state saved. Stage: {plot_state.get_stage().value}, Awareness: {plot_state.get_awareness():.2f}")
 
+    # Cross-module inventory: completing this fragment leaves proof behind.
+    # Other fragments can check SharedInventory for it later.
+    if level_completed:
+        from game.inventory import Item, SharedInventory
+        inv = SharedInventory.load_or_create()
+        inv.add(Item(
+            id="city_keycard",
+            name="City Transit Keycard",
+            item_type="quest",
+            rarity="uncommon",
+            source_module="py_city",
+            description="Stamped for a route that no longer exists.",
+            stackable=False,
+        ))
+        inv.save()
+
     # Return completion status
     return level_completed
 
@@ -1720,11 +1736,6 @@ def _get_situation(npc: CityNPC, player: CityPlayer, plot_state):
     return "greeting"
 
 
-# Exit codes for launcher integration
-EXIT_QUIT = 0       # Player quit normally
-EXIT_COMPLETED = 1  # Player completed the level
-
-
 # Standalone entry point for launcher
 if __name__ == "__main__":
     # Add beginners_guide root to path for game imports
@@ -1747,5 +1758,8 @@ if __name__ == "__main__":
 
     pygame.quit()
 
-    # Exit with appropriate code for launcher
-    sys.exit(EXIT_COMPLETED if completed else EXIT_QUIT)
+    # Report the outcome via the completion-file protocol; the launcher
+    # treats exit codes only as an error signal (non-zero = crash).
+    from game.completion import STATUS_COMPLETED, STATUS_QUIT, write_result
+    write_result("py_city", STATUS_COMPLETED if completed else STATUS_QUIT)
+    sys.exit(0)
