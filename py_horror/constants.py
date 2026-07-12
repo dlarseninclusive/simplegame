@@ -19,10 +19,15 @@ DARK_BROWN = (101, 67, 33)
 GRAY = (128, 128, 128)
 DARK_GREEN = (0, 100, 0)
 
-# Initialize pygame and create window
+# Initialize pygame and create window.
+# When running inside The Tutorial wrapper a display already exists —
+# creating another one here would hijack/resize the wrapper's window,
+# so only set_mode when no display surface exists yet.
 pygame.init()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Village Horror")
+screen = pygame.display.get_surface()
+if screen is None:
+    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.display.set_caption("Village Horror")
 clock = pygame.time.Clock()
 
 # Font setup

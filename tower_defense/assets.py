@@ -1,6 +1,18 @@
 # File: assets.py
 
+import os
+
 import pygame
+
+# Sprites live next to this file — resolve them relative to it so the game
+# loads regardless of the current working directory (the wrapper launches
+# games from the repo root).
+_SPRITES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sprites")
+
+
+def _sprite_path(filename):
+    return os.path.join(_SPRITES_DIR, filename)
+
 
 def load_assets():
     """
@@ -24,7 +36,7 @@ def load_assets():
     # ----------------------
     # 1) Load Knight
     # ----------------------
-    knight_orig = pygame.image.load("sprites/knight.png").convert_alpha()
+    knight_orig = pygame.image.load(_sprite_path("knight.png")).convert_alpha()
     w_knight, h_knight = knight_orig.get_size()
     knight_scaled = pygame.transform.scale(
         knight_orig,
@@ -35,7 +47,7 @@ def load_assets():
     # ----------------------
     # 2) Load Tower
     # ----------------------
-    tower_orig = pygame.image.load("sprites/tower.png").convert_alpha()
+    tower_orig = pygame.image.load(_sprite_path("tower.png")).convert_alpha()
     w_tower, h_tower = tower_orig.get_size()
     tower_scaled = pygame.transform.scale(
         tower_orig,
@@ -47,7 +59,7 @@ def load_assets():
     # 3) Load Attackers
     # ----------------------
     # Attacker1
-    attacker1_orig = pygame.image.load("sprites/attacker1.png").convert_alpha()
+    attacker1_orig = pygame.image.load(_sprite_path("attacker1.png")).convert_alpha()
     w_a1, h_a1 = attacker1_orig.get_size()
     attacker1_scaled = pygame.transform.scale(
         attacker1_orig,
@@ -56,7 +68,7 @@ def load_assets():
     assets["attacker1"] = attacker1_scaled
 
     # Attacker2
-    attacker2_orig = pygame.image.load("sprites/attacker2.png").convert_alpha()
+    attacker2_orig = pygame.image.load(_sprite_path("attacker2.png")).convert_alpha()
     w_a2, h_a2 = attacker2_orig.get_size()
     attacker2_scaled = pygame.transform.scale(
         attacker2_orig,
@@ -65,7 +77,7 @@ def load_assets():
     assets["attacker2"] = attacker2_scaled
 
     # Attacker3
-    attacker3_orig = pygame.image.load("sprites/attacker3.png").convert_alpha()
+    attacker3_orig = pygame.image.load(_sprite_path("attacker3.png")).convert_alpha()
     w_a3, h_a3 = attacker3_orig.get_size()
     attacker3_scaled = pygame.transform.scale(
         attacker3_orig,
@@ -76,7 +88,7 @@ def load_assets():
     # ----------------------
     # 4) Load Fireball
     # ----------------------
-    fireball_orig = pygame.image.load("sprites/fireball.png").convert_alpha()
+    fireball_orig = pygame.image.load(_sprite_path("fireball.png")).convert_alpha()
     w_fb, h_fb = fireball_orig.get_size()
     fireball_scaled = pygame.transform.scale(
         fireball_orig,
@@ -87,7 +99,7 @@ def load_assets():
     # ----------------------
     # 5) Load Tile
     # ----------------------
-    tile_orig = pygame.image.load("sprites/tile.png").convert_alpha()
+    tile_orig = pygame.image.load(_sprite_path("tile.png")).convert_alpha()
     w_tile, h_tile = tile_orig.get_size()
     tile_scaled = pygame.transform.scale(
         tile_orig,
